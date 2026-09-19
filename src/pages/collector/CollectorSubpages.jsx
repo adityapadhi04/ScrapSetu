@@ -55,6 +55,8 @@ import {
   MOCK_COLLECTOR_DATA, 
   MOCK_COLLECTOR_TRANSACTIONS 
 } from '../../data/mockData';
+import { identifyMaterial } from '../../services/materialIdentificationService';
+import { getCatalogItemByCategory } from '../../data/materialCatalog';
 
 /**
  * 7-Step Mobile-First Scrap Lot Creation Wizard for Collector (Module 3)
@@ -67,13 +69,14 @@ export const CollectorSellPage = () => {
 
   const activeCollectorId = user?.userId || 'usr-collector-01';
 
-  // Wizard Step state: 1 (Photo) -> 2 (Material) -> 3 (Weight) -> 4 (Condition) -> 5 (Location) -> 6 (Notes & Review) -> 7 (Success)
+  // Wizard Step state: 1 (Photo) -> 2 (AI Identify Material) -> 3 (Weight) -> 4 (Condition) -> 5 (Location) -> 6 (Notes & Review) -> 7 (Success)
   const [step, setStep] = useState(1);
 
   // Form Fields (Preserved across Back/Next navigation)
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [materialType, setMaterialType] = useState('PCB');
+  const [materialSubcategory, setMaterialSubcategory] = useState('Computer PCB');
   const [weight, setWeight] = useState('');
   const [weightUnit, setWeightUnit] = useState('kg');
   const [condition, setCondition] = useState('fair');
@@ -82,6 +85,17 @@ export const CollectorSellPage = () => {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdLot, setCreatedLot] = useState(null);
+
+  // Module 4: AI Identification & Human-in-the-Loop State
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
+  const [showManualSelection, setShowManualSelection] = useState(false);
+  const [identificationMethod, setIdentificationMethod] = useState('demo_ai');
+  const [confidenceScore, setConfidenceScore] = useState(0.91);
+  const [collectorConfirmed, setCollectorConfirmed] = useState(false);
+  const [aiSuggestedCategory, setAiSuggestedCategory] = useState(null);
+  const [aiSuggestedSubcategory, setAiSuggestedSubcategory] = useState(null);
+  const [aiConfidenceScore, setAiConfidenceScore] = useState(null);
 
   // Hidden File Inputs for Camera & Gallery
   const cameraInputRef = useRef(null);
@@ -139,14 +153,73 @@ export const CollectorSellPage = () => {
     }
   };
 
-  // Step 1 Validation -> Proceed to Step 2
-  const handleProceedFromPhoto = () => {
+  // Step 1 Validation -> Proceed to Step 2 (Trigger AI inference)
+  const handleProceedFromPhoto = async () => {
     if (!photo) {
       setError(t('photoRequiredWarning'));
       return;
     }
     setError('');
     setStep(2);
+
+    // If AI identification has not yet run for this photo, run inference
+    if (!aiResult) {
+      setIsAnalyzing(true);
+      try {
+        const result = await identifyMaterial(photo, { skipDelay: false });
+        setAiResult(result);
+        setAiSuggestedCategory(result.materialCategory);
+        setAiSuggestedSubcategory(result.materialSubcategory);
+        setAiConfidenceScore(result.confidenceScore);
+
+        if (result.isConfident) {
+          setMaterialType(result.materialCategory);
+          setMaterialSubcategory(result.materialSubcategory);
+          setIdentificationMethod('demo_ai');
+          setConfidenceScore(result.confidenceScore);
+          setShowManualSelection(false);
+        } else {
+          // Low confidence -> allow manual selection fallback
+          setMaterialType(result.materialCategory || 'Other E-waste');
+          setMaterialSubcategory(result.materialSubcategory || 'Unsorted E-waste');
+          setIdentificationMethod('manual');
+          setConfidenceScore(result.confidenceScore);
+          setShowManualSelection(true);
+        }
+      } catch (err) {
+        console.error('AI inference error:', err);
+        setShowManualSelection(true);
+        setIdentificationMethod('manual');
+      } finally {
+        setIsAnalyzing(false);
+      }
+    }
+  };
+
+  // Collector confirms AI-suggested material
+  const handleConfirmAiMaterial = () => {
+    if (!aiResult) return;
+    setMaterialType(aiResult.materialCategory);
+    setMaterialSubcategory(aiResult.materialSubcategory);
+    setIdentificationMethod('demo_ai');
+    setConfidenceScore(aiResult.confidenceScore);
+    setCollectorConfirmed(true);
+    setStep(3); // Proceed to Weight
+  };
+
+  // Collector chooses to manually select another material (Human-in-the-Loop Override)
+  const handleChooseAnotherMaterial = () => {
+    setShowManualSelection(true);
+  };
+
+  // Collector selects category manually from catalog grid
+  const handleSelectManualMaterial = (selectedCat) => {
+    setMaterialType(selectedCat);
+    const catItem = getCatalogItemByCategory(selectedCat);
+    setMaterialSubcategory(catItem?.defaultSubcategory || selectedCat);
+    setIdentificationMethod('manual');
+    setCollectorConfirmed(true);
+    // Preserves aiSuggestedCategory, aiSuggestedSubcategory, and aiConfidenceScore for audit tracking
   };
 
   // Step 3 Validation -> Proceed to Step 4
@@ -170,7 +243,7 @@ export const CollectorSellPage = () => {
     setStep(6);
   };
 
-  // Final Submission: Create Scrap Lot
+  // Final Submission: Create Scrap Lot + Linked SIH Material Dataset Record
   const handleCreateLot = () => {
     setError('');
     setIsSubmitting(true);
@@ -183,12 +256,19 @@ export const CollectorSellPage = () => {
         collectorId: activeCollectorId,
         materialType,
         materialCategory: category,
+        materialSubcategory,
         photo,
         weight,
         weightUnit,
         condition,
         location: locationArea,
-        notes
+        notes,
+        identificationMethod,
+        confidenceScore,
+        collectorConfirmed: true,
+        aiSuggestedCategory,
+        aiSuggestedSubcategory,
+        aiConfidenceScore
       });
 
       setCreatedLot(newLot);
@@ -206,6 +286,16 @@ export const CollectorSellPage = () => {
     setPhoto(null);
     setPhotoPreview(null);
     setMaterialType('PCB');
+    setMaterialSubcategory('Computer PCB');
+    setAiResult(null);
+    setShowManualSelection(false);
+    setIsAnalyzing(false);
+    setIdentificationMethod('demo_ai');
+    setConfidenceScore(0.91);
+    setCollectorConfirmed(false);
+    setAiSuggestedCategory(null);
+    setAiSuggestedSubcategory(null);
+    setAiConfidenceScore(null);
     setWeight('');
     setWeightUnit('kg');
     setCondition('fair');
@@ -507,103 +597,404 @@ export const CollectorSellPage = () => {
         )}
 
         {/* =========================================================================
-            STEP 2: SELECT SCRAP TYPE (Manual Material Selection)
+            STEP 2: IDENTIFY MATERIAL (AI Material Identification + Human Confirmation)
             ========================================================================= */}
         {step === 2 && (
           <div>
+            {/* Header */}
             <div style={{ marginBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-                {t('selectScrapType')}
-              </h2>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-                <span>{t('manualSelection')}</span>
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                <Sparkles size={20} color="#15803d" />
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  {t('identifyMaterial')}
+                </h2>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0 }}>
+                {t('prototypeNotice')}
+              </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '1.5rem' }}>
-              {MATERIAL_OPTIONS.map((mat) => {
-                const isSelected = materialType === mat.type;
-                const matLabel = t(mat.nameKey, mat.fallbackName);
-                const catLabel = t(mat.categoryKey, mat.category);
+            {/* Analyzing State with subtle animation */}
+            {isAnalyzing && (
+              <Card style={{ padding: '2.5rem 1.5rem', textAlign: 'center', marginBottom: '1.25rem', border: '2px solid #86efac', background: '#f0fdf4' }}>
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: '50%',
+                    background: '#bbf7d0',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '1rem',
+                    color: '#15803d',
+                    animation: 'pulse 1.5s infinite ease-in-out'
+                  }}
+                >
+                  <Sparkles size={28} />
+                </div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#166534', marginBottom: '0.35rem' }}>
+                  {t('analyzingPhoto')}
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: '#64748b', maxWidth: '300px', margin: '0 auto 1.25rem auto' }}>
+                  Extracting visual features and matching against prototype e-waste catalog rules...
+                </p>
+                <div style={{ width: '160px', height: '5px', background: '#bbf7d0', borderRadius: '99px', margin: '0 auto', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: '60%',
+                      height: '100%',
+                      background: '#15803d',
+                      borderRadius: '99px',
+                      animation: 'pulse 1s infinite alternate'
+                    }}
+                  />
+                </div>
+              </Card>
+            )}
 
-                return (
-                  <button
-                    key={mat.type}
-                    type="button"
-                    onClick={() => setMaterialType(mat.type)}
+            {/* AI Identification Result Screen */}
+            {!isAnalyzing && aiResult && (
+              <div>
+                {/* Photo Thumbnail + Classification Pill */}
+                {photo && (
+                  <div
                     style={{
                       display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-start',
-                      padding: '0.85rem',
+                      alignItems: 'center',
+                      gap: '12px',
+                      padding: '0.75rem',
+                      background: '#ffffff',
                       borderRadius: '12px',
-                      border: isSelected ? `2.5px solid ${mat.color}` : '1.5px solid #e2e8f0',
-                      background: isSelected ? mat.bg : '#ffffff',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.12s ease',
-                      position: 'relative'
+                      border: '1px solid #e2e8f0',
+                      marginBottom: '1rem'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: '0.4rem' }}>
-                      <span style={{ fontSize: '1.6rem' }}>{mat.icon}</span>
-                      {isSelected && <CheckCircle size={18} color={mat.color} />}
+                    <img
+                      src={photo}
+                      alt="Uploaded Scrap"
+                      style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #cbd5e1' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>
+                        Scrap Photo
+                      </span>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#0f172a' }}>
+                        {selectedMaterialObj.icon} {selectedMaterialObj.fallbackName}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      style={{ background: 'none', border: 'none', color: '#15803d', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      {t('retakePhoto')}
+                    </button>
+                  </div>
+                )}
+
+                {/* AI-Assisted Suggestion Card (when confident and not overridden) */}
+                {aiResult.isConfident && !showManualSelection && (
+                  <Card
+                    id="ai-suggestion-card"
+                    style={{
+                      padding: '1.25rem',
+                      border: '2px solid #86efac',
+                      background: '#f0fdf4',
+                      borderRadius: '14px',
+                      marginBottom: '1.25rem'
+                    }}
+                  >
+                    {/* Header badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          background: '#15803d',
+                          color: '#ffffff',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          padding: '3px 10px',
+                          borderRadius: '99px',
+                          letterSpacing: '0.03em'
+                        }}
+                      >
+                        <Sparkles size={12} />
+                        <span>{t('aiAssistedSuggestion')}</span>
+                      </span>
+
+                      <span
+                        id="ai-confidence-badge"
+                        style={{
+                          fontSize: '0.78rem',
+                          fontWeight: 800,
+                          color: '#166534',
+                          background: '#bbf7d0',
+                          padding: '3px 8px',
+                          borderRadius: '6px'
+                        }}
+                      >
+                        {t('aiConfidence')}: {Math.round(aiResult.confidenceScore * 100)}%
+                      </span>
                     </div>
 
-                    <div style={{ fontSize: '0.92rem', fontWeight: isSelected ? 800 : 700, color: '#0f172a', marginBottom: '2px' }}>
-                      {matLabel}
+                    {/* Identified Material Main Badge */}
+                    <div
+                      style={{
+                        background: '#ffffff',
+                        border: '1.5px solid #86efac',
+                        borderRadius: '12px',
+                        padding: '1rem',
+                        marginBottom: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}
+                    >
+                      <span style={{ fontSize: '2.4rem' }}>{selectedMaterialObj.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>
+                          {aiResult.materialCategory}
+                        </div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#15803d' }}>
+                          {aiResult.materialSubcategory}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                          {aiResult.materialDescription}
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
-                      {catLabel}
+
+                    {/* Why this suggestion? Accordion / Box */}
+                    <div
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.7)',
+                        borderRadius: '10px',
+                        padding: '0.85rem',
+                        marginBottom: '1.25rem',
+                        border: '1px solid #bbf7d0'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                        <Info size={15} color="#15803d" />
+                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#166534' }}>
+                          {t('whyThisSuggestion')}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.78rem', color: '#334155', margin: 0, lineHeight: 1.4 }}>
+                        {t('aiSuggestionExplanation')}
+                      </p>
+                      {aiResult.suggestions?.[0]?.rationale && (
+                        <p style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '4px', fontStyle: 'italic', margin: '4px 0 0 0' }}>
+                          "{aiResult.suggestions[0].rationale}"
+                        </p>
+                      )}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
 
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                style={{
-                  flex: 1,
-                  padding: '0.85rem',
-                  fontSize: '0.95rem',
-                  fontWeight: 700,
-                  borderRadius: '10px',
-                  border: '1px solid #e2e8f0',
-                  background: '#ffffff',
-                  color: '#475569',
-                  cursor: 'pointer'
-                }}
-              >
-                ← {t('back')}
-              </button>
+                    {/* Action Buttons: Confirm vs Choose Another */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <button
+                        id="btn-confirm-ai-material"
+                        type="button"
+                        onClick={handleConfirmAiMaterial}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          width: '100%',
+                          padding: '0.9rem',
+                          fontSize: '1rem',
+                          fontWeight: 800,
+                          borderRadius: '10px',
+                          border: 'none',
+                          background: '#15803d',
+                          color: '#ffffff',
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 10px rgba(21, 128, 61, 0.3)'
+                        }}
+                      >
+                        <Check size={18} />
+                        <span>✓ {t('confirmMaterial', { material: aiResult.materialCategory }).replace('{material}', aiResult.materialCategory)}</span>
+                      </button>
 
-              <button
-                id="btn-step2-next"
-                type="button"
-                onClick={() => setStep(3)}
-                style={{
-                  flex: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  padding: '0.85rem',
-                  fontSize: '1rem',
-                  fontWeight: 800,
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: '#15803d',
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 10px rgba(21, 128, 61, 0.3)'
-                }}
-              >
-                <span>Next: Weight →</span>
-              </button>
-            </div>
+                      <button
+                        id="btn-choose-another-material"
+                        type="button"
+                        onClick={handleChooseAnotherMaterial}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          width: '100%',
+                          padding: '0.75rem',
+                          fontSize: '0.88rem',
+                          fontWeight: 700,
+                          borderRadius: '10px',
+                          border: '1.5px solid #cbd5e1',
+                          background: '#ffffff',
+                          color: '#475569',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <RefreshCw size={15} />
+                        <span>{t('chooseAnotherMaterial')}</span>
+                      </button>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Manual Selection Grid (shown if user overrides or if AI has low confidence) */}
+                {(showManualSelection || !aiResult.isConfident) && (
+                  <div>
+                    {/* Notice if low confidence or override */}
+                    {!aiResult.isConfident ? (
+                      <div
+                        id="low-confidence-banner"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '0.85rem 1rem',
+                          borderRadius: '10px',
+                          background: '#fffbeb',
+                          border: '1px solid #fde68a',
+                          color: '#b45309',
+                          fontSize: '0.84rem',
+                          marginBottom: '1rem'
+                        }}
+                      >
+                        <AlertCircle size={20} style={{ flexShrink: 0 }} />
+                        <div>
+                          <strong>{t('notConfident')}: </strong>
+                          <span>{t('notConfidentDesc')}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        id="human-override-banner"
+                        style={{
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '8px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          fontSize: '0.78rem',
+                          color: '#475569',
+                          marginBottom: '1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                      >
+                        <span>
+                          💡 AI Suggestion was <strong>{aiSuggestedCategory}</strong> ({Math.round((aiConfidenceScore || 0.91) * 100)}%). Select your confirmed material:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowManualSelection(false)}
+                          style={{ background: 'none', border: 'none', color: '#15803d', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                        >
+                          Use AI Suggestion
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Catalog Grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '1.25rem' }}>
+                      {MATERIAL_OPTIONS.map((mat) => {
+                        const isSelected = materialType === mat.type;
+                        const matLabel = t(mat.nameKey, mat.fallbackName);
+                        const catLabel = t(mat.categoryKey, mat.category);
+
+                        return (
+                          <button
+                            key={mat.type}
+                            id={`btn-select-${mat.type.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
+                            type="button"
+                            onClick={() => handleSelectManualMaterial(mat.type)}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'flex-start',
+                              padding: '0.85rem',
+                              borderRadius: '12px',
+                              border: isSelected ? `2.5px solid ${mat.color}` : '1.5px solid #e2e8f0',
+                              background: isSelected ? mat.bg : '#ffffff',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              transition: 'all 0.12s ease',
+                              position: 'relative'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: '0.4rem' }}>
+                              <span style={{ fontSize: '1.6rem' }}>{mat.icon}</span>
+                              {isSelected && <CheckCircle size={18} color={mat.color} />}
+                            </div>
+
+                            <div style={{ fontSize: '0.92rem', fontWeight: isSelected ? 800 : 700, color: '#0f172a', marginBottom: '2px' }}>
+                              {matLabel}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+                              {catLabel}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setStep(1)}
+                        style={{
+                          flex: 1,
+                          padding: '0.85rem',
+                          fontSize: '0.95rem',
+                          fontWeight: 700,
+                          borderRadius: '10px',
+                          border: '1px solid #e2e8f0',
+                          background: '#ffffff',
+                          color: '#475569',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ← {t('back')}
+                      </button>
+
+                      <button
+                        id="btn-step2-next"
+                        type="button"
+                        onClick={() => {
+                          setCollectorConfirmed(true);
+                          setStep(3);
+                        }}
+                        style={{
+                          flex: 2,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          padding: '0.85rem',
+                          fontSize: '1rem',
+                          fontWeight: 800,
+                          borderRadius: '10px',
+                          border: 'none',
+                          background: '#15803d',
+                          color: '#ffffff',
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 10px rgba(21, 128, 61, 0.3)'
+                        }}
+                      >
+                        <span>Next: Weight →</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -1014,13 +1405,36 @@ export const CollectorSellPage = () => {
               {/* Material Row */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #f1f5f9' }}>
                 <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>{t('selectScrapType')}</span>
-                  <strong style={{ fontSize: '0.98rem', color: '#0f172a' }}>
-                    {selectedMaterialObj.icon} {t(selectedMaterialObj.nameKey, selectedMaterialObj.fallbackName)}
-                  </strong>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block', marginTop: '2px' }}>
-                    ({t(selectedMaterialObj.categoryKey, selectedMaterialObj.category)})
-                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>{t('identifyMaterial')}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <strong style={{ fontSize: '0.98rem', color: '#0f172a' }}>
+                      {selectedMaterialObj.icon} {t(selectedMaterialObj.nameKey, selectedMaterialObj.fallbackName)}
+                    </strong>
+                    {materialSubcategory && (
+                      <span style={{ fontSize: '0.78rem', color: '#15803d', fontWeight: 700 }}>
+                        • {materialSubcategory}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        background: identificationMethod === 'demo_ai' ? '#dcfce7' : '#f1f5f9',
+                        color: identificationMethod === 'demo_ai' ? '#15803d' : '#475569'
+                      }}
+                    >
+                      {identificationMethod === 'demo_ai' ? `🤖 ${t('aiAssisted')} (${Math.round((confidenceScore || 0.91) * 100)}%)` : `👤 ${t('manualMethod')}`}
+                    </span>
+                    {identificationMethod === 'manual' && aiSuggestedCategory && (
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                        (AI suggested: {aiSuggestedCategory})
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -1217,26 +1631,53 @@ export const CollectorSellPage = () => {
                 {t('lotCreatedSuccess')}
               </h2>
 
-              {/* Prominent Lot ID Display */}
+              {/* Prominent Lot ID and Material ID Display */}
               <div
                 style={{
-                  background: '#ffffff',
-                  border: '2px dashed #86efac',
-                  borderRadius: '12px',
-                  padding: '1rem',
-                  maxWidth: '260px',
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '8px',
+                  maxWidth: '320px',
                   margin: '0 auto 1.25rem auto'
                 }}
               >
-                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>
-                  {t('lotId')}
-                </span>
-                <strong
-                  id="created-lot-id-badge"
-                  style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a', letterSpacing: '0.05em' }}
+                <div
+                  style={{
+                    background: '#ffffff',
+                    border: '2px dashed #86efac',
+                    borderRadius: '12px',
+                    padding: '0.75rem'
+                  }}
                 >
-                  {createdLot.id}
-                </strong>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>
+                    {t('lotId')}
+                  </span>
+                  <strong
+                    id="created-lot-id-badge"
+                    style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}
+                  >
+                    {createdLot.id}
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    background: '#ffffff',
+                    border: '2px dashed #93c5fd',
+                    borderRadius: '12px',
+                    padding: '0.75rem'
+                  }}
+                >
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>
+                    {t('materialId')}
+                  </span>
+                  <strong
+                    id="created-material-id-badge"
+                    style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0284c7' }}
+                  >
+                    {createdLot.materialId || 'MAT-0001'}
+                  </strong>
+                </div>
               </div>
 
               {/* Summary Details */}
@@ -1252,8 +1693,23 @@ export const CollectorSellPage = () => {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ color: '#64748b' }}>{t('selectScrapType')}</span>
-                  <strong>{selectedMaterialObj.icon} {t(selectedMaterialObj.nameKey, selectedMaterialObj.fallbackName)}</strong>
+                  <span style={{ color: '#64748b' }}>{t('identifyMaterial')}</span>
+                  <strong>{selectedMaterialObj.icon} {createdLot.materialType} ({createdLot.materialSubcategory || selectedMaterialObj.fallbackName})</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ color: '#64748b' }}>{t('identificationMethod')}</span>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      background: createdLot.identificationMethod === 'demo_ai' ? '#dcfce7' : '#f1f5f9',
+                      color: createdLot.identificationMethod === 'demo_ai' ? '#15803d' : '#475569'
+                    }}
+                  >
+                    {createdLot.identificationMethod === 'demo_ai' ? `🤖 ${t('aiAssisted')} (${Math.round((createdLot.confidenceScore || 0.91) * 100)}%)` : `👤 ${t('manualMethod')}`}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <span style={{ color: '#64748b' }}>{t('enterWeight')}</span>
@@ -1265,7 +1721,7 @@ export const CollectorSellPage = () => {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748b' }}>{t('confirmLocation')}</span>
-                  <strong>📍 {createdLot.location}</strong>
+                  <strong>📍 {typeof createdLot.location === 'object' ? createdLot.location.area : createdLot.location}</strong>
                 </div>
               </div>
 
@@ -1739,9 +2195,9 @@ export const CollectorLotsPage = () => {
                     transition: 'box-shadow 0.15s ease'
                   }}
                 >
-                  {/* Top Bar: Lot ID + Status Badge */}
+                  {/* Top Bar: Lot ID + Material ID + Status Badge */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       <span
                         className="lot-id-tag"
                         style={{
@@ -1756,6 +2212,36 @@ export const CollectorLotsPage = () => {
                       >
                         {lot.id}
                       </span>
+                      {lot.materialId && (
+                        <span
+                          className="mat-id-tag"
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            fontFamily: 'monospace',
+                            color: '#0284c7',
+                            background: '#e0f2fe',
+                            padding: '2px 7px',
+                            borderRadius: '6px'
+                          }}
+                        >
+                          {lot.materialId}
+                        </span>
+                      )}
+                      {lot.identificationMethod === 'demo_ai' && (
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            color: '#15803d',
+                            background: '#dcfce7',
+                            padding: '1px 6px',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          🤖 AI {lot.confidenceScore ? `${Math.round(lot.confidenceScore * 100)}%` : ''}
+                        </span>
+                      )}
                       <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
                         {new Date(lot.createdAt).toLocaleDateString()}
                       </span>

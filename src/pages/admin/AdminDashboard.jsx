@@ -53,6 +53,11 @@ import {
   MOCK_RECENT_TRANSACTIONS, 
   MOCK_VERIFICATION_QUEUE 
 } from '../../data/mockData';
+import { 
+  getMaterialRecords, 
+  getDatasetStats, 
+  getDatasetMetadata 
+} from '../../services/materialDatasetService';
 
 export const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -71,6 +76,12 @@ export const AdminDashboard = () => {
   // Verification queue state
   const [verificationQueue, setVerificationQueue] = useState(MOCK_VERIFICATION_QUEUE);
 
+  // Material Dataset State (Module 4)
+  const [datasetRecords, setDatasetRecords] = useState(() => getMaterialRecords());
+  const [selectedRecordJson, setSelectedRecordJson] = useState(null);
+  const [datasetFilterCategory, setDatasetFilterCategory] = useState('ALL');
+  const [datasetSearchTerm, setDatasetSearchTerm] = useState('');
+
   const sidebarItems = [
     { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
     { id: 'collectors', label: t('collectors'), icon: Users, count: MOCK_ADMIN_COLLECTORS.length },
@@ -79,6 +90,7 @@ export const AdminDashboard = () => {
     { id: 'materials', label: t('materials'), icon: Layers, count: materials.length },
     { id: 'prices', label: t('prices'), icon: DollarSign },
     { id: 'lots', label: t('lots'), icon: Package, count: MOCK_ADMIN_LOTS.length },
+    { id: 'material-dataset', label: t('materialDataset'), icon: Database, count: datasetRecords.length },
     { id: 'transactions', label: t('transactions'), icon: FileText, count: MOCK_RECENT_TRANSACTIONS.length },
     { id: 'traceability', label: t('traceability'), icon: QrCode },
     { id: 'analytics', label: t('analytics'), icon: BarChart3 },
@@ -96,6 +108,19 @@ export const AdminDashboard = () => {
     setVerificationQueue(verificationQueue.filter((v) => v.id !== id));
     alert(`Entity "${name}" has been verified and granted CPCB platform access. (Demo)`);
   };
+
+  const datasetStats = getDatasetStats();
+  const datasetMetadata = getDatasetMetadata();
+
+  const filteredDatasetRecords = datasetRecords.filter((r) => {
+    const matchesCat = datasetFilterCategory === 'ALL' || r.materialCategory === datasetFilterCategory;
+    const matchesSearch = !datasetSearchTerm.trim() || 
+      (r.materialId && r.materialId.toLowerCase().includes(datasetSearchTerm.toLowerCase())) ||
+      (r.lotId && r.lotId.toLowerCase().includes(datasetSearchTerm.toLowerCase())) ||
+      (r.collectorId && r.collectorId.toLowerCase().includes(datasetSearchTerm.toLowerCase())) ||
+      (r.materialSubcategory && r.materialSubcategory.toLowerCase().includes(datasetSearchTerm.toLowerCase()));
+    return matchesCat && matchesSearch;
+  });
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
@@ -757,6 +782,322 @@ export const AdminDashboard = () => {
                   </Card>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* =========================================================================
+              VIEW: MATERIAL DATASET (SIH Foundation - Module 4)
+              ========================================================================= */}
+          {activeSection === 'material-dataset' && (
+            <div>
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>
+                      📊 {t('materialDataset')}
+                    </h2>
+                    <Badge variant="success">v{datasetMetadata.datasetVersion}</Badge>
+                    <Badge variant="neutral">SIH Structured Dataset</Badge>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px', marginBottom: 0 }}>
+                    {t('materialDatasetSubtitle')} • {datasetMetadata.source}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Download}
+                    onClick={() => {
+                      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(datasetRecords, null, 2));
+                      const downloadAnchor = document.createElement('a');
+                      downloadAnchor.setAttribute("href", dataStr);
+                      downloadAnchor.setAttribute("download", "scrapsetu_material_dataset.json");
+                      document.body.appendChild(downloadAnchor);
+                      downloadAnchor.click();
+                      downloadAnchor.remove();
+                    }}
+                  >
+                    Export JSON
+                  </Button>
+                </div>
+              </div>
+
+              {/* SIH Limitations & Methodology Disclaimer */}
+              <div
+                style={{
+                  padding: '0.85rem 1.25rem',
+                  borderRadius: '10px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '1.5rem',
+                  fontSize: '0.82rem',
+                  color: '#475569',
+                  lineHeight: 1.5
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                  <AlertCircle size={15} color="#0284c7" />
+                  <span>SIH Dataset Provenance & Limitations Notice:</span>
+                </div>
+                <div>{t('datasetLimitations')}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
+                  <strong>Collection Method:</strong> {datasetMetadata.collectionMethod} | <strong>Price Estimation:</strong> Deferred to Module 5 (all values currently null).
+                </div>
+              </div>
+
+              {/* Metric KPI Cards */}
+              <div className="grid-cols-4" style={{ marginBottom: '1.75rem', gap: '1rem' }}>
+                <Card style={{ borderLeft: '4px solid #0f172a' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('totalRecords')}
+                    </span>
+                    <Database size={18} color="#0f172a" />
+                  </div>
+                  <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a' }}>
+                    {datasetStats.totalRecords}
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                    Sequential MAT IDs
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #15803d' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('aiAssistedRecords')}
+                    </span>
+                    <Cpu size={18} color="#15803d" />
+                  </div>
+                  <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#15803d' }}>
+                    {datasetStats.aiAssistedCount}
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: '#15803d', fontWeight: 600 }}>
+                    {datasetStats.totalRecords > 0 ? Math.round((datasetStats.aiAssistedCount / datasetStats.totalRecords) * 100) : 0}% of submissions
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #0284c7' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('manualRecords')}
+                    </span>
+                    <Users size={18} color="#0284c7" />
+                  </div>
+                  <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0284c7' }}>
+                    {datasetStats.manualCount}
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: '#0284c7', fontWeight: 600 }}>
+                    Human overrides / manual
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #7c3aed' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('confirmedRecords')}
+                    </span>
+                    <CheckCircle2 size={18} color="#7c3aed" />
+                  </div>
+                  <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#7c3aed' }}>
+                    {datasetStats.confirmedCount}
+                  </div>
+                  <span style={{ fontSize: '0.75rem', color: '#7c3aed', fontWeight: 600 }}>
+                    {datasetStats.confirmedRate}% verification rate
+                  </span>
+                </Card>
+              </div>
+
+              {/* Filters & Search */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="text"
+                    placeholder="Search by MAT ID, Lot ID, Collector ID..."
+                    value={datasetSearchTerm}
+                    onChange={(e) => setDatasetSearchTerm(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 1rem 0.65rem 2.25rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.88rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                <select
+                  value={datasetFilterCategory}
+                  onChange={(e) => setDatasetFilterCategory(e.target.value)}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    background: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">All Categories</option>
+                  <option value="PCB">PCB</option>
+                  <option value="Cable">Cable</option>
+                  <option value="Battery">Battery</option>
+                  <option value="Motor">Motor</option>
+                  <option value="LCD / Display">LCD / Display</option>
+                  <option value="Mobile Phone">Mobile Phone</option>
+                  <option value="Laptop / Computer">Laptop / Computer</option>
+                  <option value="Other E-waste">Other E-waste</option>
+                </select>
+              </div>
+
+              {/* Table Card */}
+              <Card style={{ padding: '0', overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                        <th style={{ padding: '0.85rem 1rem' }}>Material ID</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Lot ID</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Collector ID</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Category</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Subcategory</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Weight</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Condition</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Method</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Confidence</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Confirmed</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Created At</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDatasetRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                            No material dataset records match the current filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredDatasetRecords.map((r) => (
+                          <tr key={r.materialId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', fontWeight: 800, color: '#0284c7' }}>
+                              {r.materialId}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', color: '#475569' }}>
+                              {r.lotId}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
+                              {r.collectorId}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                              {r.materialCategory}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>
+                              {r.materialSubcategory || '—'}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', fontWeight: 700 }}>
+                              {r.approximateWeight} {r.weightUnit}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', textTransform: 'capitalize' }}>
+                              {r.condition}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  background: r.identificationMethod === 'demo_ai' ? '#dcfce7' : '#f1f5f9',
+                                  color: r.identificationMethod === 'demo_ai' ? '#15803d' : '#475569'
+                                }}
+                              >
+                                {r.identificationMethod === 'demo_ai' ? '🤖 AI-Assisted' : '👤 Manual'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              {r.confidenceScore !== null && r.confidenceScore !== undefined ? `${Math.round(r.confidenceScore * 100)}%` : '—'}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: r.collectorConfirmed ? '#dcfce7' : '#fee2e2',
+                                  color: r.collectorConfirmed ? '#166534' : '#991b1b'
+                                }}
+                              >
+                                {r.collectorConfirmed ? '✓ Yes' : 'No'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', color: '#64748b' }}>
+                              {new Date(r.createdAt).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedRecordJson(r)}
+                                style={{
+                                  padding: '3px 8px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  background: '#ffffff',
+                                  color: '#0284c7',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                JSON
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* Modal to view complete structured JSON record */}
+              <Modal
+                isOpen={!!selectedRecordJson}
+                onClose={() => setSelectedRecordJson(null)}
+                title={`SIH Dataset Record: ${selectedRecordJson?.materialId}`}
+              >
+                {selectedRecordJson && (
+                  <div>
+                    <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '0.75rem' }}>
+                      Structured SIH Material Dataset JSON entity generated from collector activity.
+                    </p>
+                    <pre
+                      style={{
+                        background: '#0f172a',
+                        color: '#38bdf8',
+                        padding: '1rem',
+                        borderRadius: '8px',
+                        fontSize: '0.8rem',
+                        overflowX: 'auto',
+                        maxHeight: '400px'
+                      }}
+                    >
+                      {JSON.stringify(selectedRecordJson, null, 2)}
+                    </pre>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                      <Button variant="primary" size="sm" onClick={() => setSelectedRecordJson(null)}>
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Modal>
             </div>
           )}
 

@@ -1,103 +1,15 @@
 /**
- * ScrapSetu — Scrap Lot Data Service (Module 3)
+ * ScrapSetu — Scrap Lot Data Service (Module 3 & Module 4)
  * Centralized service managing scrap lot data, creation, ID generation,
- * and collector-specific filtering.
+ * collector-specific filtering, and linkage to SIH Material Dataset records.
  */
+
+import { MATERIAL_CATALOG, MATERIAL_OPTIONS as CATALOG_MATERIAL_OPTIONS } from '../data/materialCatalog.js';
+import { createMaterialRecord, resetMaterialDataset } from './materialDatasetService.js';
 
 export const STORAGE_KEY_SCRAP_LOTS = 'scrapsetu_scrap_lots';
 
-export const MATERIAL_OPTIONS = [
-  {
-    type: 'PCB',
-    category: 'Electronic Components',
-    nameKey: 'materialPcb',
-    categoryKey: 'categoryElectronicComponents',
-    fallbackName: 'PCB',
-    icon: '💻',
-    color: '#15803d',
-    bg: '#dcfce7'
-  },
-  {
-    type: 'Cable',
-    category: 'Cables & Wires',
-    nameKey: 'materialCable',
-    categoryKey: 'categoryCablesWires',
-    fallbackName: 'Cable',
-    icon: '🔌',
-    color: '#0284c7',
-    bg: '#e0f2fe'
-  },
-  {
-    type: 'Battery',
-    category: 'Batteries',
-    nameKey: 'materialBattery',
-    categoryKey: 'categoryBatteries',
-    fallbackName: 'Battery',
-    icon: '🔋',
-    color: '#b91c1c',
-    bg: '#fee2e2'
-  },
-  {
-    type: 'Motor',
-    category: 'Motors',
-    nameKey: 'materialMotor',
-    categoryKey: 'categoryMotors',
-    fallbackName: 'Motor',
-    icon: '⚡',
-    color: '#d97706',
-    bg: '#fef3c7'
-  },
-  {
-    type: 'LCD / Display',
-    category: 'Displays',
-    nameKey: 'materialDisplay',
-    categoryKey: 'categoryDisplays',
-    fallbackName: 'LCD / Display',
-    icon: '🖥️',
-    color: '#4f46e5',
-    bg: '#e0e7ff'
-  },
-  {
-    type: 'Mobile Phone',
-    category: 'Mobile Devices',
-    nameKey: 'materialMobile',
-    categoryKey: 'categoryMobileDevices',
-    fallbackName: 'Mobile Phone',
-    icon: '📱',
-    color: '#059669',
-    bg: '#d1fae5'
-  },
-  {
-    type: 'Laptop / Computer',
-    category: 'Computing Devices',
-    nameKey: 'materialLaptop',
-    categoryKey: 'categoryComputingDevices',
-    fallbackName: 'Laptop / Computer',
-    icon: '💻',
-    color: '#7c3aed',
-    bg: '#ede9fe'
-  },
-  {
-    type: 'Other E-waste',
-    category: 'Other E-waste',
-    nameKey: 'materialOther',
-    categoryKey: 'categoryOtherEwaste',
-    fallbackName: 'Other E-waste',
-    icon: '📦',
-    color: '#475569',
-    bg: '#f1f5f9'
-  },
-  {
-    type: 'Not sure',
-    category: 'Unclassified',
-    nameKey: 'notSureIdentifyLater',
-    categoryKey: 'categoryUnclassified',
-    fallbackName: 'Not sure — identify later',
-    icon: '❓',
-    color: '#64748b',
-    bg: '#f8fafc'
-  }
-];
+export const MATERIAL_OPTIONS = CATALOG_MATERIAL_OPTIONS;
 
 export const CONDITION_OPTIONS = [
   {
@@ -138,13 +50,15 @@ export const CONDITION_OPTIONS = [
   }
 ];
 
-// Initial seed lots for usr-collector-01
+// Initial seed lots for usr-collector-01 linked to MAT-0001 and MAT-0002
 const SEED_LOTS = [
   {
     id: 'LOT-0001',
+    materialId: 'MAT-0001',
     collectorId: 'usr-collector-01',
     materialType: 'PCB',
     materialCategory: 'Electronic Components',
+    materialSubcategory: 'Computer PCB',
     photo: null,
     weight: 2.4,
     weightUnit: 'kg',
@@ -157,13 +71,17 @@ const SEED_LOTS = [
     notes: 'Laptop motherboards and PCB fragments',
     status: 'Created',
     createdAt: '2026-09-18T10:00:00.000Z',
-    identificationMethod: 'manual'
+    identificationMethod: 'manual',
+    confidenceScore: 1.0,
+    collectorConfirmed: true
   },
   {
     id: 'LOT-0002',
+    materialId: 'MAT-0002',
     collectorId: 'usr-collector-01',
     materialType: 'Cable',
     materialCategory: 'Cables & Wires',
+    materialSubcategory: 'Copper Cable',
     photo: null,
     weight: 5.0,
     weightUnit: 'kg',
@@ -176,7 +94,9 @@ const SEED_LOTS = [
     notes: 'Stripped copper power wiring',
     status: 'Created',
     createdAt: '2026-09-19T08:30:00.000Z',
-    identificationMethod: 'manual'
+    identificationMethod: 'manual',
+    confidenceScore: 1.0,
+    collectorConfirmed: true
   }
 ];
 
@@ -237,18 +157,25 @@ export const getScrapLotById = (lotId) => {
 };
 
 /**
- * Create a new scrap lot and persist in localStorage
+ * Create a new scrap lot, atomically create linked Material Dataset record, and persist in localStorage
  */
 export const createScrapLot = ({
   collectorId,
   materialType,
   materialCategory,
+  materialSubcategory = '',
   photo = null,
   weight,
   weightUnit = 'kg',
   condition,
   location,
-  notes = ''
+  notes = '',
+  identificationMethod = 'manual',
+  confidenceScore = 1.0,
+  collectorConfirmed = true,
+  aiSuggestedCategory = null,
+  aiSuggestedSubcategory = null,
+  aiConfidenceScore = null
 }) => {
   if (!collectorId) {
     throw new Error('collectorId is required');
@@ -268,7 +195,7 @@ export const createScrapLot = ({
   }
 
   const allLots = getScrapLots();
-  const newId = generateNextLotId(allLots);
+  const newLotId = generateNextLotId(allLots);
 
   // Normalize location format
   const normalizedLocation = typeof location === 'string'
@@ -279,15 +206,39 @@ export const createScrapLot = ({
         state: location?.state?.trim() || ''
       };
 
-  // Derive material category if not provided
+  // Derive material category and subcategory if not provided
   const categoryMatch = MATERIAL_OPTIONS.find((m) => m.type === materialType);
   const derivedCategory = materialCategory || categoryMatch?.category || 'Electronic Components';
+  const derivedSubcategory = materialSubcategory || categoryMatch?.defaultSubcategory || materialType;
+
+  // Create linked SIH Material Dataset Record first to ensure synchronization
+  const materialRecord = createMaterialRecord({
+    lotId: newLotId,
+    collectorId,
+    materialCategory: materialType, // specific material type (e.g. PCB)
+    materialSubcategory: derivedSubcategory,
+    materialDescription: notes?.trim() || `${materialType} (${derivedCategory}) scrap lot`,
+    image: photo,
+    approximateWeight: numWeight,
+    weightUnit: weightUnit === 'g' ? 'g' : 'kg',
+    condition: condition.toLowerCase(),
+    sourceType: 'Informal Collector',
+    identificationMethod,
+    confidenceScore: confidenceScore !== undefined ? parseFloat(confidenceScore) : 1.0,
+    collectorConfirmed: Boolean(collectorConfirmed),
+    aiSuggestedCategory: aiSuggestedCategory || null,
+    aiSuggestedSubcategory: aiSuggestedSubcategory || null,
+    aiConfidenceScore: aiConfidenceScore !== null && aiConfidenceScore !== undefined ? parseFloat(aiConfidenceScore) : null,
+    createdAt: new Date().toISOString()
+  });
 
   const newLot = {
-    id: newId,
+    id: newLotId,
+    materialId: materialRecord.materialId,
     collectorId,
     materialType,
     materialCategory: derivedCategory,
+    materialSubcategory: derivedSubcategory,
     photo,
     weight: numWeight,
     weightUnit: weightUnit === 'g' ? 'g' : 'kg',
@@ -295,8 +246,13 @@ export const createScrapLot = ({
     location: normalizedLocation,
     notes: notes?.trim() || '',
     status: 'Created',
-    createdAt: new Date().toISOString(),
-    identificationMethod: 'manual'
+    createdAt: materialRecord.createdAt,
+    identificationMethod,
+    confidenceScore: materialRecord.confidenceScore,
+    collectorConfirmed: materialRecord.collectorConfirmed,
+    aiSuggestedCategory: materialRecord.aiSuggestedCategory,
+    aiSuggestedSubcategory: materialRecord.aiSuggestedSubcategory,
+    aiConfidenceScore: materialRecord.aiConfidenceScore
   };
 
   const updatedLots = [newLot, ...allLots];
@@ -319,9 +275,10 @@ export const createScrapLot = ({
 };
 
 /**
- * Reset scrap lots to initial seed state (useful for test resets)
+ * Reset scrap lots and material dataset to initial seed state
  */
 export const resetScrapLots = () => {
   localStorage.setItem(STORAGE_KEY_SCRAP_LOTS, JSON.stringify(SEED_LOTS));
+  resetMaterialDataset();
   return SEED_LOTS;
 };
