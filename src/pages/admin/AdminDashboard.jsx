@@ -63,6 +63,28 @@ import {
   getPriceDatasetStats, 
   getPriceDatasetMetadata 
 } from '../../services/priceDatasetService';
+import { 
+  getRecyclers, 
+  getRecyclerDatasetStats 
+} from '../../services/recyclerService';
+import { 
+  getOffers, 
+  getOfferStats 
+} from '../../services/offerService';
+import {
+  getTransactions,
+  getTransactionStats
+} from '../../services/transactionService';
+import {
+  getHandovers,
+  getHandoverStats
+} from '../../services/handoverService';
+import {
+  getPayments,
+  getPaymentStats
+} from '../../services/paymentService';
+import { getScrapLots } from '../../services/scrapLotService';
+
 
 export const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -95,6 +117,32 @@ export const AdminDashboard = () => {
   const [priceFilterLocation, setPriceFilterLocation] = useState('ALL');
   const [priceSearchTerm, setPriceSearchTerm] = useState('');
 
+  // Recycler Dataset State (Module 7)
+  const [recyclerRecords, setRecyclerRecords] = useState(() => getRecyclers());
+  const [selectedRecyclerJson, setSelectedRecyclerJson] = useState(null);
+  const [recyclerFilterMaterial, setRecyclerFilterMaterial] = useState('ALL');
+  const [recyclerFilterCity, setRecyclerFilterCity] = useState('ALL');
+  const [recyclerFilterStatus, setRecyclerFilterStatus] = useState('ALL');
+  const [recyclerSearchTerm, setRecyclerSearchTerm] = useState('');
+
+  // Offer Dataset State (Module 8)
+  const [offerRecords, setOfferRecords] = useState(() => getOffers());
+  const [selectedOfferJson, setSelectedOfferJson] = useState(null);
+  const [offerFilterRole, setOfferFilterRole] = useState('ALL');
+  const [offerFilterMaterial, setOfferFilterMaterial] = useState('ALL');
+  const [offerFilterStatus, setOfferFilterStatus] = useState('ALL');
+  const [offerSearchTerm, setOfferSearchTerm] = useState('');
+
+  // Transaction Dataset State (Module 9)
+  const [txnRecords, setTxnRecords] = useState(() => getTransactions());
+  const [txnSearchTerm, setTxnSearchTerm] = useState('');
+  const [txnFilterStatus, setTxnFilterStatus] = useState('ALL');
+  const [txnFilterBuyerRole, setTxnFilterBuyerRole] = useState('ALL');
+  const [txnFilterPaymentStatus, setTxnFilterPaymentStatus] = useState('ALL');
+  const txnStats = getTransactionStats();
+  const handoverStats = getHandoverStats();
+  const paymentStats = getPaymentStats();
+
   const sidebarItems = [
     { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
     { id: 'collectors', label: t('collectors'), icon: Users, count: MOCK_ADMIN_COLLECTORS.length },
@@ -105,7 +153,9 @@ export const AdminDashboard = () => {
     { id: 'lots', label: t('lots'), icon: Package, count: MOCK_ADMIN_LOTS.length },
     { id: 'material-dataset', label: t('materialDataset'), icon: Database, count: datasetRecords.length },
     { id: 'price-dataset', label: t('priceDataset'), icon: IndianRupee, count: priceRecords.length },
-    { id: 'transactions', label: t('transactions'), icon: FileText, count: MOCK_RECENT_TRANSACTIONS.length },
+    { id: 'recycler-dataset', label: t('recyclerDataset'), icon: Recycle, count: recyclerRecords.length },
+    { id: 'offers-dataset', label: t('offersDataset'), icon: DollarSign, count: offerRecords.length },
+    { id: 'transactions', label: t('transactions'), icon: FileText, count: txnRecords.length },
     { id: 'traceability', label: t('traceability'), icon: QrCode },
     { id: 'analytics', label: t('analytics'), icon: BarChart3 },
     { id: 'settings', label: t('settings'), icon: Settings },
@@ -153,6 +203,25 @@ export const AdminDashboard = () => {
       (r.materialSubcategory && r.materialSubcategory.toLowerCase().includes(priceSearchTerm.toLowerCase())) ||
       (typeof r.location === 'object' && ((r.location.area && r.location.area.toLowerCase().includes(priceSearchTerm.toLowerCase())) || (r.location.city && r.location.city.toLowerCase().includes(priceSearchTerm.toLowerCase()))));
     return matchesMat && matchesSource && matchesLoc && matchesSearch;
+  });
+
+  const recyclerStats = getRecyclerDatasetStats();
+
+  const filteredRecyclerRecords = recyclerRecords.filter((r) => {
+    const matchesMat = recyclerFilterMaterial === 'ALL' || (r.acceptedMaterials || []).some((m) =>
+      m.toLowerCase().includes(recyclerFilterMaterial.toLowerCase()) || recyclerFilterMaterial.toLowerCase().includes(m.toLowerCase())
+    );
+    const matchesCity = recyclerFilterCity === 'ALL' ||
+      (r.address?.city && r.address.city.toLowerCase() === recyclerFilterCity.toLowerCase()) ||
+      (r.operatingAreas || []).some((op) => op.toLowerCase() === recyclerFilterCity.toLowerCase());
+    const matchesStatus = recyclerFilterStatus === 'ALL' || r.status === recyclerFilterStatus;
+    const matchesSearch = !recyclerSearchTerm.trim() ||
+      (r.recyclerId && r.recyclerId.toLowerCase().includes(recyclerSearchTerm.toLowerCase())) ||
+      (r.businessName && r.businessName.toLowerCase().includes(recyclerSearchTerm.toLowerCase())) ||
+      (r.contactName && r.contactName.toLowerCase().includes(recyclerSearchTerm.toLowerCase())) ||
+      (r.authorizationNumber && r.authorizationNumber.toLowerCase().includes(recyclerSearchTerm.toLowerCase())) ||
+      (r.address?.city && r.address.city.toLowerCase().includes(recyclerSearchTerm.toLowerCase()));
+    return matchesMat && matchesCity && matchesStatus && matchesSearch;
   });
 
   return (
@@ -1500,103 +1569,968 @@ export const AdminDashboard = () => {
           )}
 
           {/* =========================================================================
-              VIEW 8: TRANSACTIONS
+              VIEW 7C: RECYCLER DATASET (SIH26229 Authorized Recycler Dataset Governance)
               ========================================================================= */}
-          {activeSection === 'transactions' && (
+          {activeSection === 'recycler-dataset' && (
             <div>
+              {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>📄 Financial Settlement & Payout Ledger</h2>
-                  <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                    Immutable digital records of payments disbursed to informal collectors
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>
+                      ♻️ {t('recyclerDataset')} (SIH)
+                    </h2>
+                    <Badge variant="success">v1.0</Badge>
+                    <Badge variant="warning">DEMO DATA (Prototype Verified)</Badge>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px', marginBottom: 0 }}>
+                    {t('recyclerDatasetSubtitle')} • {recyclerStats.datasetSource}
                   </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Download}
+                    onClick={() => {
+                      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(recyclerRecords, null, 2));
+                      const downloadAnchor = document.createElement('a');
+                      downloadAnchor.setAttribute("href", dataStr);
+                      downloadAnchor.setAttribute("download", "scrapsetu_recycler_dataset.json");
+                      document.body.appendChild(downloadAnchor);
+                      downloadAnchor.click();
+                      downloadAnchor.remove();
+                    }}
+                  >
+                    Export Recycler JSON
+                  </Button>
                 </div>
               </div>
 
+              {/* SIH Limitations & Methodology Disclaimer */}
+              <div
+                style={{
+                  padding: '0.85rem 1.25rem',
+                  borderRadius: '10px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '1.5rem',
+                  fontSize: '0.82rem',
+                  color: '#475569',
+                  lineHeight: 1.5
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                  <AlertCircle size={15} color="#0284c7" />
+                  <span>SIH Recycler Dataset Methodology & Verification Disclaimer:</span>
+                </div>
+                <div>{t('recyclerDatasetLimitations')}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
+                  <strong>Data Safety Notice:</strong> All records are prototype entries tagged with <code>sourceType: "demo_seed"</code> and <code>authorizationType: "Demo Authorization Record"</code>. Never represents actual government accreditation.
+                </div>
+              </div>
+
+              {/* 4 Metric KPI Cards */}
+              <div className="grid-cols-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1.75rem', gap: '1rem' }}>
+                <Card style={{ borderLeft: '4px solid #0f172a' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('totalRecords')}
+                    </span>
+                    <Database size={17} color="#0f172a" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0f172a' }}>
+                    {recyclerStats.totalRecords}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                    Sequential REC IDs
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #15803d' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Active Facilities
+                    </span>
+                    <CheckCircle2 size={17} color="#15803d" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#15803d' }}>
+                    {recyclerStats.activeRecords}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
+                    Operational recyclers
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #0284c7' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Pickup Fleet
+                    </span>
+                    <Recycle size={17} color="#0284c7" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0284c7' }}>
+                    {recyclerStats.pickupAvailableCount}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 600 }}>
+                    Facilities offering transport
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #f59e0b' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Regional Hubs
+                    </span>
+                    <MapPin size={17} color="#f59e0b" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>
+                    {recyclerStats.citiesCovered}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#f59e0b', fontWeight: 600 }}>
+                    Cities & areas covered
+                  </span>
+                </Card>
+              </div>
+
+              {/* Filters & Search */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '220px', position: 'relative' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="text"
+                    placeholder="Search REC ID, Business Name, City, Auth Number..."
+                    value={recyclerSearchTerm}
+                    onChange={(e) => setRecyclerSearchTerm(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 1rem 0.65rem 2.25rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.88rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                <select
+                  value={recyclerFilterMaterial}
+                  onChange={(e) => setRecyclerFilterMaterial(e.target.value)}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    background: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">All Materials</option>
+                  <option value="PCB">PCB / Circuit Boards</option>
+                  <option value="Cable">Cable / Copper Wire</option>
+                  <option value="Battery">Battery (Lithium / Lead)</option>
+                  <option value="Mobile Phone">Mobile Phone</option>
+                  <option value="Laptop / Computer">Laptop / Computer</option>
+                  <option value="Motor">Motors</option>
+                  <option value="Metal Chassis">Metal Chassis</option>
+                </select>
+
+                <select
+                  value={recyclerFilterCity}
+                  onChange={(e) => setRecyclerFilterCity(e.target.value)}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    background: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">All Operating Cities</option>
+                  <option value="Gunupur">Gunupur</option>
+                  <option value="Rayagada">Rayagada</option>
+                  <option value="Bhubaneswar">Bhubaneswar</option>
+                  <option value="Cuttack">Cuttack</option>
+                  <option value="Berhampur">Berhampur</option>
+                  <option value="Navi Mumbai">Navi Mumbai</option>
+                  <option value="Mumbai">Mumbai</option>
+                </select>
+
+                <select
+                  value={recyclerFilterStatus}
+                  onChange={(e) => setRecyclerFilterStatus(e.target.value)}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    background: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              {/* Table Card */}
               <Card style={{ padding: '0', overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
                     <thead>
                       <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
-                        <th style={{ padding: '0.85rem 1rem' }}>Txn ID</th>
-                        <th style={{ padding: '0.85rem 1rem' }}>Lot Ref</th>
-                        <th style={{ padding: '0.85rem 1rem' }}>Collector (Beneficiary)</th>
-                        <th style={{ padding: '0.85rem 1rem' }}>Buyer Entity</th>
-                        <th style={{ padding: '0.85rem 1rem' }}>Material & Weight</th>
-                        <th style={{ padding: '0.85rem 1rem' }}>Amount</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Recycler ID</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Business Name</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>City / Hub</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Accepted Materials</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Pickup</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Min Lot</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Verification Record</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Auth Number</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Source Type</th>
                         <th style={{ padding: '0.85rem 1rem' }}>Status</th>
-                        <th style={{ padding: '0.85rem 1rem' }}>Timestamp</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {MOCK_RECENT_TRANSACTIONS.map((t) => (
-                        <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', fontWeight: 700 }}>{t.id}</td>
-                          <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', color: '#64748b' }}>{t.lotId}</td>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 600 }}>{t.collector}</td>
-                          <td style={{ padding: '0.85rem 1rem' }}>{t.buyer}</td>
-                          <td style={{ padding: '0.85rem 1rem' }}>{t.material}</td>
-                          <td style={{ padding: '0.85rem 1rem', fontWeight: 800, color: '#0f172a' }}>{t.amount}</td>
-                          <td style={{ padding: '0.85rem 1rem' }}>
-                            <Badge variant={t.status.includes('Completed') ? 'success' : 'warning'}>
-                              {t.status}
-                            </Badge>
+                      {filteredRecyclerRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                            No recycler dataset records match the current filter.
                           </td>
-                          <td style={{ padding: '0.85rem 1rem', color: '#64748b', fontSize: '0.78rem' }}>{t.timestamp}</td>
                         </tr>
-                      ))}
+                      ) : (
+                        filteredRecyclerRecords.map((r) => (
+                          <tr key={r.recyclerId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', fontWeight: 800, color: '#0284c7' }}>
+                              {r.recyclerId}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                              {r.businessName}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', color: '#334155' }}>
+                              📍 {r.address?.city}, {r.address?.state}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', color: '#475569', fontSize: '0.8rem' }}>
+                              {r.acceptedMaterials?.join(' • ')}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: r.pickupAvailable ? '#15803d' : '#64748b' }}>
+                                {r.pickupAvailable ? '🚚 Yes' : '🏢 Drop-off'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                              {r.minimumWeightKg} kg
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 800, background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '4px' }}>
+                                {r.verificationStatus}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', fontSize: '0.78rem', color: '#475569' }}>
+                              {r.authorizationNumber}
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                  background: r.sourceType === 'demo_seed' ? '#ede9fe' : '#dcfce7',
+                                  color: r.sourceType === 'demo_seed' ? '#6d28d9' : '#15803d'
+                                }}
+                              >
+                                {r.sourceType === 'demo_seed' ? 'DEMO DATA' : 'Registered'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: r.status === 'active' ? '#15803d' : '#dc2626' }}>
+                                {r.status.toUpperCase()}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.85rem 1rem' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedRecyclerJson(r)}
+                                style={{
+                                  padding: '3px 8px',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700,
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  background: '#ffffff',
+                                  color: '#0284c7',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                JSON
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
               </Card>
+
+              {/* Modal to view complete structured Recycler JSON record */}
+              <Modal
+                isOpen={!!selectedRecyclerJson}
+                onClose={() => setSelectedRecyclerJson(null)}
+                title={`SIH Recycler Record: ${selectedRecyclerJson?.recyclerId}`}
+              >
+                {selectedRecyclerJson && (
+                  <div>
+                    <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '0.75rem' }}>
+                      Structured SIH Recycler Dataset JSON entity with operational parameters and demo verification details.
+                    </p>
+                    <pre
+                      style={{
+                        background: '#0f172a',
+                        color: '#38bdf8',
+                        padding: '1rem',
+                        borderRadius: '8px',
+                        fontSize: '0.8rem',
+                        overflowX: 'auto',
+                        maxHeight: '400px'
+                      }}
+                    >
+                      {JSON.stringify(selectedRecyclerJson, null, 2)}
+                    </pre>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                      <Button variant="primary" size="sm" onClick={() => setSelectedRecyclerJson(null)}>
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Modal>
             </div>
           )}
 
           {/* =========================================================================
-              VIEW 9: TRACEABILITY
+              VIEW 7D: OFFERS DATASET (Module 8 Offer & Marketplace Governance)
               ========================================================================= */}
-          {activeSection === 'traceability' && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <div>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>🔗 Chain-of-Custody & CPCB Traceability Trail</h2>
-                  <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                    Verifiable digital manifests tracking scrap from street collector to authorized recycling/reuse
-                  </p>
-                </div>
-                <Badge variant="info">EPR Compliant Hash Trail</Badge>
-              </div>
+          {activeSection === 'offers-dataset' && (() => {
+            const offerStats = getOfferStats();
+            const filteredOffers = offerRecords.filter((o) => {
+              if (offerFilterRole !== 'ALL' && o.buyerRole !== offerFilterRole) return false;
+              if (offerFilterMaterial !== 'ALL' && o.materialCategory !== offerFilterMaterial) return false;
+              if (offerFilterStatus !== 'ALL' && o.status !== offerFilterStatus) return false;
+              if (offerSearchTerm.trim()) {
+                const term = offerSearchTerm.toLowerCase().trim();
+                const matchId = o.offerId?.toLowerCase().includes(term);
+                const matchLot = o.lotId?.toLowerCase().includes(term);
+                const matchBuyer = o.buyerName?.toLowerCase().includes(term);
+                const matchMat = o.materialCategory?.toLowerCase().includes(term);
+                if (!matchId && !matchLot && !matchBuyer && !matchMat) return false;
+              }
+              return true;
+            });
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {MOCK_ADMIN_TRACEABILITY_LOGS.map((log) => (
-                  <Card key={log.traceId} style={{ padding: '1.25rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <div>
+            return (
+              <div>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        💰 {t('offersDataset')}
+                      </h2>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 800, background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px' }}>
+                        Module 8 Marketplace Layer
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px' }}>
+                      Auditable record of commercial purchase offers submitted by Repair Shops and Authorized Recyclers.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(offerRecords, null, 2));
+                        const downloadAnchor = document.createElement('a');
+                        downloadAnchor.setAttribute("href", dataStr);
+                        downloadAnchor.setAttribute("download", "scrapsetu_offers_dataset.json");
+                        document.body.appendChild(downloadAnchor);
+                        downloadAnchor.click();
+                        downloadAnchor.remove();
+                      }}
+                    >
+                      Export Offers JSON
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Important Platform Governance Disclaimer */}
+                <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: '#475569' }}>
+                  ℹ️ <strong>Marketplace Governance:</strong> Offers represent expressions of commercial interest. Selecting an offer changes the lot's status to <code>offer_selected</code>. No financial settlements, UPI payments, or physical handovers are finalized in this layer.
+                </div>
+
+                {/* Summary Metrics Cards */}
+                <div className="grid-cols-4" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
+                  <Card style={{ borderLeft: '4px solid #0284c7' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('allOffersCount')}
+                    </span>
+                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                      {offerStats.totalOffers}
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Across all lots
+                    </span>
+                  </Card>
+
+                  <Card style={{ borderLeft: '4px solid #16a34a' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('acceptedOffersCount')}
+                    </span>
+                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#15803d', marginTop: '2px' }}>
+                      {offerStats.acceptedOffers}
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>
+                      Selected by collectors
+                    </span>
+                  </Card>
+
+                  <Card style={{ borderLeft: '4px solid #d97706' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('pendingOffersCount')}
+                    </span>
+                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#d97706', marginTop: '2px' }}>
+                      {offerStats.submittedOffers}
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Awaiting collector review
+                    </span>
+                  </Card>
+
+                  <Card style={{ borderLeft: '4px solid #7c3aed' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      Total Bid Value
+                    </span>
+                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#7c3aed', marginTop: '2px' }}>
+                      ₹{offerStats.totalValue?.toLocaleString('en-IN')}
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                      Repair: {offerStats.repairOffers} • Recycler: {offerStats.recyclerOffers}
+                    </span>
+                  </Card>
+                </div>
+
+                {/* Filters & Search */}
+                <Card style={{ padding: '1rem', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>
+                        Buyer Role
+                      </label>
+                      <select
+                        value={offerFilterRole}
+                        onChange={(e) => setOfferFilterRole(e.target.value)}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                      >
+                        <option value="ALL">All Buyers (Repair + Recycler)</option>
+                        <option value="repair">Repair Shops (Reuse)</option>
+                        <option value="recycler">Authorized Recyclers</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>
+                        Status
+                      </label>
+                      <select
+                        value={offerFilterStatus}
+                        onChange={(e) => setOfferFilterStatus(e.target.value)}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                      >
+                        <option value="ALL">All Statuses</option>
+                        <option value="submitted">Submitted</option>
+                        <option value="accepted">Accepted</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="withdrawn">Withdrawn</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>
+                        Material Category
+                      </label>
+                      <select
+                        value={offerFilterMaterial}
+                        onChange={(e) => setOfferFilterMaterial(e.target.value)}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                      >
+                        <option value="ALL">All Materials</option>
+                        <option value="PCB">PCB</option>
+                        <option value="Cable">Cable</option>
+                        <option value="Battery">Battery</option>
+                        <option value="Display / Screen">Display / Screen</option>
+                        <option value="Mobile Phone">Mobile Phone</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>
+                        Search Offers
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Search ID, lot, buyer, material..."
+                        value={offerSearchTerm}
+                        onChange={(e) => setOfferSearchTerm(e.target.value)}
+                        style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Table of Offers */}
+                <Card style={{ padding: '0', overflow: 'hidden' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                          <th style={{ padding: '0.75rem 1rem' }}>Offer ID</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Lot ID</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Buyer</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Buyer Role</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Material</th>
+                          <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Weight</th>
+                          <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Rate (₹/kg)</th>
+                          <th style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>Total Value</th>
+                          <th style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>Status</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Source</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Date</th>
+                          <th style={{ padding: '0.75rem 1rem' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredOffers.length === 0 ? (
+                          <tr>
+                            <td colSpan="12" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                              No offers match the current filter criteria.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredOffers.map((o) => {
+                            const isAccepted = o.status === 'accepted';
+                            const isRejected = o.status === 'rejected';
+                            return (
+                              <tr key={o.offerId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', fontWeight: 800, color: '#0f172a' }}>
+                                  {o.offerId}
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', fontWeight: 700, color: '#0284c7' }}>
+                                  {o.lotId}
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                                  {o.buyerName}
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem' }}>
+                                  <span style={{ fontSize: '0.72rem', padding: '2px 7px', borderRadius: '4px', background: o.buyerRole === 'repair' ? '#fef3c7' : '#e0f2fe', color: o.buyerRole === 'repair' ? '#92400e' : '#0369a1', fontWeight: 700 }}>
+                                    {o.buyerRole === 'repair' ? 'Repair' : 'Recycler'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem' }}>
+                                  {o.materialCategory}
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
+                                  {o.weight} {o.weightUnit}
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 800 }}>
+                                  ₹{o.offeredPrice}/kg
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem', textAlign: 'right', fontWeight: 900, color: '#15803d' }}>
+                                  ₹{o.totalOfferValue?.toLocaleString('en-IN')}
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                                  <span
+                                    style={{
+                                      fontSize: '0.72rem',
+                                      fontWeight: 800,
+                                      padding: '2px 8px',
+                                      borderRadius: '99px',
+                                      background: isAccepted ? '#dcfce7' : isRejected ? '#fee2e2' : '#fef3c7',
+                                      color: isAccepted ? '#15803d' : isRejected ? '#dc2626' : '#92400e',
+                                      textTransform: 'uppercase'
+                                    }}
+                                  >
+                                    {o.status}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem' }}>
+                                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: o.sourceType === 'demo_seed' ? '#6d28d9' : '#15803d' }}>
+                                    {o.sourceType === 'demo_seed' ? 'DEMO' : 'User'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', color: '#64748b' }}>
+                                  {new Date(o.createdAt).toLocaleDateString()}
+                                </td>
+                                <td style={{ padding: '0.85rem 1rem' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedOfferJson(o)}
+                                    style={{
+                                      padding: '3px 8px',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 700,
+                                      borderRadius: '6px',
+                                      border: '1px solid #cbd5e1',
+                                      background: '#ffffff',
+                                      color: '#0284c7',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    JSON
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Modal to view complete structured Offer JSON */}
+                <Modal
+                  isOpen={!!selectedOfferJson}
+                  onClose={() => setSelectedOfferJson(null)}
+                  title={`Structured Offer Record: ${selectedOfferJson?.offerId || ''}`}
+                  maxWidth="640px"
+                >
+                  {selectedOfferJson && (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                            {log.traceId}
+                          <span style={{ fontFamily: 'monospace', fontWeight: 800, background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px' }}>
+                            {selectedOfferJson.offerId}
                           </span>
-                          <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{log.material} ({log.weight})</h3>
-                          <Badge variant="success">{log.complianceStatus}</Badge>
+                          <Badge variant={selectedOfferJson.buyerRole === 'repair' ? 'warning' : 'info'}>
+                            {selectedOfferJson.buyerRole === 'repair' ? 'Repair Shop Offer' : 'Authorized Recycler Offer'}
+                          </Badge>
+                          <Badge variant="success">{selectedOfferJson.status}</Badge>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem', color: '#475569', marginTop: '6px' }}>
-                          <div>Origin: <strong>{log.originCollector}</strong></div>
-                          <div>Destination: <strong>{log.destinationFacility}</strong></div>
-                          <div style={{ fontFamily: 'monospace', color: '#0284c7' }}>QR Hash: {log.qrHash}</div>
-                          <div>EPR Credit Generated: <strong style={{ color: '#15803d' }}>{log.eprCreditGenerated}</strong></div>
-                        </div>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                          Schema: scrapsetu_offers v1.0.0
+                        </span>
                       </div>
 
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Logged Timestamp</span>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block' }}>{log.timestamp}</span>
+                      <pre
+                        style={{
+                          background: '#0f172a',
+                          color: '#e2e8f0',
+                          padding: '1rem',
+                          borderRadius: '8px',
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                          overflowX: 'auto',
+                          maxHeight: '380px',
+                          lineHeight: 1.45
+                        }}
+                      >
+                        {JSON.stringify(selectedOfferJson, null, 2)}
+                      </pre>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                        <Button variant="outline" size="sm" onClick={() => setSelectedOfferJson(null)}>
+                          Close
+                        </Button>
                       </div>
                     </div>
-                  </Card>
-                ))}
+                  )}
+                </Modal>
               </div>
-            </div>
-          )}
+            );
+          })()}
+
+          {/* =========================================================================
+              VIEW 8: TRANSACTIONS
+              ========================================================================= */}
+          {activeSection === 'transactions' && (() => {
+            const filteredTxns = txnRecords.filter((tx) => {
+              const matchStatus = txnFilterStatus === 'ALL' || tx.transactionStatus === txnFilterStatus;
+              const matchBuyerRole = txnFilterBuyerRole === 'ALL' || tx.buyerRole === txnFilterBuyerRole;
+              const matchPaymentStatus = txnFilterPaymentStatus === 'ALL' || tx.paymentStatus === txnFilterPaymentStatus;
+              const matchSearch = !txnSearchTerm.trim() ||
+                (tx.transactionId && tx.transactionId.toLowerCase().includes(txnSearchTerm.toLowerCase())) ||
+                (tx.lotId && tx.lotId.toLowerCase().includes(txnSearchTerm.toLowerCase())) ||
+                (tx.offerId && tx.offerId.toLowerCase().includes(txnSearchTerm.toLowerCase())) ||
+                (tx.collectorName && tx.collectorName.toLowerCase().includes(txnSearchTerm.toLowerCase())) ||
+                (tx.buyerName && tx.buyerName.toLowerCase().includes(txnSearchTerm.toLowerCase())) ||
+                (tx.materialCategory && tx.materialCategory.toLowerCase().includes(txnSearchTerm.toLowerCase()));
+              return matchStatus && matchBuyerRole && matchPaymentStatus && matchSearch;
+            });
+
+            return (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>📄 Transaction + Handover + Payment Dataset</h2>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Module 9 — Live transaction records for CPCB traceability ledger</p>
+                  </div>
+                  <Badge variant="neutral">{filteredTxns.length} of {txnRecords.length}</Badge>
+                </div>
+
+                {/* Stats Row */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  {[
+                    { label: 'Total Transactions', value: txnStats.total, color: '#0f172a' },
+                    { label: 'Completed', value: txnStats.completed, color: '#15803d' },
+                    { label: 'Pending Handovers', value: handoverStats.pending, color: '#d97706' },
+                    { label: 'Payments Recorded', value: paymentStats.recorded, color: '#0369a1' },
+                    { label: 'Total Recorded Value', value: `₹${(txnStats.totalRecordedValue || 0).toLocaleString('en-IN')}`, color: '#15803d' },
+                  ].map(({ label, value, color }) => (
+                    <Card key={label} style={{ padding: '0.85rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color }}>{value}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>{label}</div>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Disclaimer */}
+                <div style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '0.65rem 1rem', borderRadius: '8px', fontSize: '0.78rem', color: '#92400e', marginBottom: '1rem', fontWeight: 600 }}>
+                  ⚠️ Demo payment records — not real payment processing. No financial settlement has occurred.
+                </div>
+
+                {/* Search + Filter */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                  <input
+                    type="text"
+                    placeholder="Search TXN ID, LOT, OFR, Collector, Buyer..."
+                    value={txnSearchTerm}
+                    onChange={(e) => setTxnSearchTerm(e.target.value)}
+                    style={{ flex: 1, minWidth: '180px', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1.5px solid #e2e8f0', fontSize: '0.85rem' }}
+                  />
+                  <select
+                    value={txnFilterStatus}
+                    onChange={(e) => setTxnFilterStatus(e.target.value)}
+                    style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1.5px solid #e2e8f0', fontSize: '0.85rem' }}
+                  >
+                    {['ALL','created','handover_pending','payment_pending','completed','cancelled'].map((s) => (
+                      <option key={s} value={s}>{s === 'ALL' ? 'All Statuses' : s.replace(/_/g, ' ')}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={txnFilterBuyerRole}
+                    onChange={(e) => setTxnFilterBuyerRole(e.target.value)}
+                    style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1.5px solid #e2e8f0', fontSize: '0.85rem' }}
+                  >
+                    <option value="ALL">All Buyer Roles</option>
+                    <option value="repair">Repair Shop</option>
+                    <option value="recycler">Authorized Recycler</option>
+                  </select>
+                  <select
+                    value={txnFilterPaymentStatus}
+                    onChange={(e) => setTxnFilterPaymentStatus(e.target.value)}
+                    style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1.5px solid #e2e8f0', fontSize: '0.85rem' }}
+                  >
+                    <option value="ALL">All Payment Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="recorded">Recorded</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </div>
+
+                <Card style={{ padding: '0', overflow: 'hidden' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                          {['TXN ID', 'LOT / OFR', 'Collector', 'Buyer', 'Material', 'Weight', 'Amount', 'Handover', 'Payment', 'Status'].map((h) => (
+                            <th key={h} style={{ padding: '0.75rem 0.85rem', whiteSpace: 'nowrap' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredTxns.length === 0 ? (
+                          <tr><td colSpan={10} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>No records found</td></tr>
+                        ) : filteredTxns.map((tx) => (
+                          <tr key={tx.transactionId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '0.7rem 0.85rem', fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>{tx.transactionId}</td>
+                            <td style={{ padding: '0.7rem 0.85rem', fontFamily: 'monospace', color: '#64748b', fontSize: '0.76rem' }}>
+                              <div>{tx.lotId}</div>
+                              <div style={{ color: '#94a3b8' }}>{tx.offerId}</div>
+                            </td>
+                            <td style={{ padding: '0.7rem 0.85rem', fontWeight: 600 }}>{tx.collectorName || tx.collectorId}</td>
+                            <td style={{ padding: '0.7rem 0.85rem' }}>
+                              <div>{tx.buyerName}</div>
+                              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{tx.buyerRole}</div>
+                            </td>
+                            <td style={{ padding: '0.7rem 0.85rem' }}>{tx.materialCategory}</td>
+                            <td style={{ padding: '0.7rem 0.85rem' }}>{tx.weight} {tx.weightUnit}</td>
+                            <td style={{ padding: '0.7rem 0.85rem', fontWeight: 800, color: '#0f172a' }}>
+                              ₹{(tx.totalAmount || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td style={{ padding: '0.7rem 0.85rem' }}>
+                              <Badge variant={tx.handoverStatus === 'confirmed' ? 'success' : 'warning'}>
+                                {tx.handoverStatus?.replace(/_/g,' ')}
+                              </Badge>
+                            </td>
+                            <td style={{ padding: '0.7rem 0.85rem' }}>
+                              <Badge variant={tx.paymentStatus === 'recorded' ? 'success' : 'warning'}>
+                                {tx.paymentStatus}
+                              </Badge>
+                            </td>
+                            <td style={{ padding: '0.7rem 0.85rem' }}>
+                              <Badge variant={tx.transactionStatus === 'completed' ? 'success' : 'neutral'}>
+                                {tx.transactionStatus?.replace(/_/g,' ')}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            );
+          })()}
+
+          {/* =========================================================================
+              VIEW 9: TRACEABILITY
+              ========================================================================= */}
+          {activeSection === 'traceability' && (() => {
+            const allLots = getScrapLots();
+            const materialRecords = getMaterialRecords();
+            const allOffers = getOffers();
+            const allTxns = getTransactions();
+            const allHandovers = getHandovers();
+            const allPayments = getPayments();
+
+            // Traceability chains built directly from live lots & transactions
+            const chains = allLots.map((lot) => {
+              const mat = materialRecords.find((m) => m.lotId === lot.id) || null;
+              const acceptedOffer = allOffers.find((o) => o.lotId === lot.id && o.status === 'accepted') ||
+                                   allOffers.find((o) => o.lotId === lot.id) || null;
+              const txn = allTxns.find((t) => t.lotId === lot.id && t.transactionStatus !== 'cancelled') || null;
+              const handover = txn ? (allHandovers.find((h) => h.transactionId === txn.transactionId) || null) : null;
+              const payment = txn ? (allPayments.find((p) => p.transactionId === txn.transactionId) || null) : null;
+
+              return {
+                lot,
+                mat,
+                offer: acceptedOffer,
+                txn,
+                handover,
+                payment
+              };
+            });
+
+            return (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>🔗 Chain-of-Custody & CPCB Traceability Trail</h2>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                      Complete 6-Stage E-Waste Audit Trail: LOT → MATERIAL → OFFER → TRANSACTION → HANDOVER → PAYMENT
+                    </p>
+                  </div>
+                  <Badge variant="info">CPCB Compliant Audit Trail</Badge>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {chains.map(({ lot, mat, offer, txn, handover, payment }) => {
+                    const isFullyComplete = txn?.transactionStatus === 'completed';
+
+                    return (
+                      <Card key={lot.id} style={{ padding: '1.25rem', borderLeft: `4px solid ${isFullyComplete ? '#16a34a' : '#0284c7'}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '0.85rem', fontFamily: 'monospace', fontWeight: 800, color: '#0f172a' }}>{lot.id}</span>
+                              <Badge variant={isFullyComplete ? 'success' : 'neutral'}>
+                                {lot.transactionStatus === 'completed' ? 'Completed Trail ✓' : 'In Progress'}
+                              </Badge>
+                              <Badge variant="info">{lot.materialCategory || lot.materialType}</Badge>
+                            </div>
+                            <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '4px' }}>
+                              Collector: <strong>{lot.collectorId}</strong> • Weight: <strong>{lot.weight} {lot.weightUnit}</strong>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Traceability Stepper */}
+                        <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '0.85rem', border: '1px solid #e2e8f0' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+                            Traceability Stages
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                            {/* LOT */}
+                            <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem' }}>
+                              <span style={{ color: '#64748b', fontSize: '0.68rem', display: 'block' }}>1. LOT</span>
+                              <strong style={{ fontFamily: 'monospace', color: '#0f172a' }}>{lot.id}</strong>
+                            </div>
+
+                            <span style={{ color: '#94a3b8' }}>→</span>
+
+                            {/* MATERIAL */}
+                            <div style={{ background: mat ? '#ffffff' : '#fef2f2', border: `1px solid ${mat ? '#cbd5e1' : '#fca5a5'}`, borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem' }}>
+                              <span style={{ color: '#64748b', fontSize: '0.68rem', display: 'block' }}>2. MATERIAL</span>
+                              <strong style={{ fontFamily: 'monospace', color: mat ? '#0f172a' : '#dc2626' }}>
+                                {mat ? mat.materialId : 'Not created yet'}
+                              </strong>
+                            </div>
+
+                            <span style={{ color: '#94a3b8' }}>→</span>
+
+                            {/* OFFER */}
+                            <div style={{ background: offer ? '#ffffff' : '#fef2f2', border: `1px solid ${offer ? '#cbd5e1' : '#fca5a5'}`, borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem' }}>
+                              <span style={{ color: '#64748b', fontSize: '0.68rem', display: 'block' }}>3. OFFER</span>
+                              <strong style={{ fontFamily: 'monospace', color: offer ? '#0f172a' : '#dc2626' }}>
+                                {offer ? `${offer.offerId} (${offer.status})` : 'Not created yet'}
+                              </strong>
+                            </div>
+
+                            <span style={{ color: '#94a3b8' }}>→</span>
+
+                            {/* TRANSACTION */}
+                            <div style={{ background: txn ? '#ffffff' : '#fef2f2', border: `1px solid ${txn ? '#cbd5e1' : '#fca5a5'}`, borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem' }}>
+                              <span style={{ color: '#64748b', fontSize: '0.68rem', display: 'block' }}>4. TRANSACTION</span>
+                              <strong style={{ fontFamily: 'monospace', color: txn ? '#0f172a' : '#dc2626' }}>
+                                {txn ? `${txn.transactionId} (${txn.transactionStatus})` : 'Not created yet'}
+                              </strong>
+                            </div>
+
+                            <span style={{ color: '#94a3b8' }}>→</span>
+
+                            {/* HANDOVER */}
+                            <div style={{ background: handover ? '#ffffff' : '#fef2f2', border: `1px solid ${handover ? '#cbd5e1' : '#fca5a5'}`, borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem' }}>
+                              <span style={{ color: '#64748b', fontSize: '0.68rem', display: 'block' }}>5. HANDOVER</span>
+                              <strong style={{ fontFamily: 'monospace', color: handover ? '#0f172a' : '#dc2626' }}>
+                                {handover ? `${handover.handoverId} (${handover.handoverStatus})` : 'Not created yet'}
+                              </strong>
+                            </div>
+
+                            <span style={{ color: '#94a3b8' }}>→</span>
+
+                            {/* PAYMENT */}
+                            <div style={{ background: payment ? '#ffffff' : '#fef2f2', border: `1px solid ${payment ? '#cbd5e1' : '#fca5a5'}`, borderRadius: '6px', padding: '4px 8px', fontSize: '0.75rem' }}>
+                              <span style={{ color: '#64748b', fontSize: '0.68rem', display: 'block' }}>6. PAYMENT</span>
+                              <strong style={{ fontFamily: 'monospace', color: payment ? '#0f172a' : '#dc2626' }}>
+                                {payment ? `${payment.paymentId} (${payment.paymentMethod})` : 'Not created yet'}
+                              </strong>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* =========================================================================
               VIEW 10: ANALYTICS (CLEAN PROTOTYPE PLACEHOLDER)

@@ -41,6 +41,19 @@ import {
   MOCK_COLLECTOR_TRANSACTIONS
 } from '../../data/mockData';
 import { getWantedItems, createWantedItem, deleteWantedItem } from '../../services/repairShopService';
+import { getOffersForBuyer } from '../../services/offerService';
+import { getTransactionsByBuyer } from '../../services/transactionService';
+import { 
+  createHandover,
+  confirmBuyerReceipt,
+  getHandoversByTransaction 
+} from '../../services/handoverService';
+import { 
+  createPaymentRecord,
+  getPaymentsByTransaction,
+  VALID_PAYMENT_METHODS 
+} from '../../services/paymentService';
+import DigitalScrapReceipt from '../../components/transactions/DigitalScrapReceipt';
 
 /**
  * Reusable Repair Shop Navigation Bar
@@ -501,7 +514,10 @@ export const RepairShopWantedPage = () => {
 export const RepairShopOffersPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const [offers] = useState(MOCK_REPAIR_SHOP_OFFERS);
+  const { user } = useAuth();
+
+  const activeShopId = (user?.userId?.startsWith('SHOP')) ? user.userId : 'SHOP-0001';
+  const [realOffers, setRealOffers] = useState(() => getOffersForBuyer(activeShopId));
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '3rem' }}>
@@ -513,56 +529,95 @@ export const RepairShopOffersPage = () => {
           <div>
             <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>💰 {t('offers')}</h1>
             <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
-              Track component bids submitted to local scrap collectors
+              Track component and scrap lot offers submitted to local collectors
             </p>
           </div>
         </div>
 
         <RepairShopNavBar />
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          {offers.map((offer) => (
-            <Card key={offer.id} style={{ padding: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                      {offer.id}
-                    </span>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{offer.componentName}</h3>
-                  </div>
-                  <p style={{ fontSize: '0.85rem', color: '#475569' }}>
-                    Collector: <strong>{offer.collector}</strong> • Submitted: {offer.date}
-                  </p>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                    Fair Market Benchmark: {offer.benchmarkRate}
-                  </span>
-                </div>
+        {realOffers.length === 0 ? (
+          <Card style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b' }}>
+            <Package size={40} style={{ margin: '0 auto 10px auto', opacity: 0.5 }} />
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+              No repair reuse offers submitted yet
+            </h3>
+            <p style={{ fontSize: '0.85rem', margin: '0 auto 1.25rem auto', maxWidth: '360px' }}>
+              View available collector scrap lots in your dashboard and make offers on salvageable components.
+            </p>
+            <Button variant="accent" onClick={() => navigate('/repair-shop')}>
+              View Available Scrap Lots →
+            </Button>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {realOffers.map((offer) => {
+              const isAccepted = offer.status === 'accepted';
+              const isRejected = offer.status === 'rejected';
+              return (
+                <Card key={offer.offerId} style={{ padding: '1.25rem', border: '1.5px solid #e2e8f0', borderRadius: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 800, color: '#0f172a' }}>
+                          {offer.offerId}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                          {offer.lotId}
+                        </span>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                          {offer.materialCategory}
+                        </h3>
+                      </div>
+                      <p style={{ fontSize: '0.85rem', color: '#475569', margin: '3px 0' }}>
+                        Weight: <strong>{offer.weight} {offer.weightUnit}</strong> • Offered: <strong>₹{offer.offeredPrice}/kg</strong>
+                      </p>
+                      {offer.message && (
+                        <p style={{ fontSize: '0.78rem', color: '#64748b', fontStyle: 'italic', margin: '3px 0' }}>
+                          "{offer.message}"
+                        </p>
+                      )}
+                      <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                        📅 {new Date(offer.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Your Offer</span>
-                  <strong style={{ fontSize: '1.25rem', color: '#d97706' }}>{offer.offeredAmount}</strong>
-                  <div style={{ marginTop: '4px' }}>
-                    <Badge variant={offer.statusType === 'accepted' ? 'success' : 'warning'}>
-                      {offer.status}
-                    </Badge>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Total Offer Value</span>
+                      <strong style={{ fontSize: '1.3rem', color: '#15803d' }}>
+                        ₹{offer.totalOfferValue?.toLocaleString('en-IN')}
+                      </strong>
+                      <div style={{ marginTop: '4px' }}>
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '3px 9px',
+                            borderRadius: '99px',
+                            background: isAccepted ? '#dcfce7' : isRejected ? '#fee2e2' : '#fef3c7',
+                            color: isAccepted ? '#15803d' : isRejected ? '#dc2626' : '#92400e',
+                            border: `1px solid ${isAccepted ? '#86efac' : isRejected ? '#fca5a5' : '#fde68a'}`,
+                            textTransform: 'uppercase'
+                          }}
+                        >
+                          {offer.status}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              {offer.statusType === 'accepted' && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
-                  <span style={{ fontSize: '0.78rem', color: '#15803d', fontWeight: 600 }}>
-                    ✓ Collector accepted! Ready for physical verification & QR handover.
-                  </span>
-                  <Button variant="primary" size="sm" onClick={() => navigate('/repair-shop/purchases')}>
-                    Proceed to Handover →
-                  </Button>
-                </div>
-              )}
-            </Card>
-          ))}
-        </div>
+                  {isAccepted && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid #dcfce7', background: '#f0fdf4', margin: '0.85rem -1.25rem -1.25rem -1.25rem', padding: '0.75rem 1.25rem', borderRadius: '0 0 10px 10px' }}>
+                      <span style={{ fontSize: '0.78rem', color: '#15803d', fontWeight: 700 }}>
+                        ✓ Collector selected your offer! Verification and handover proceed in subsequent platform phases.
+                      </span>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
         {/* LOWER-LEFT: Account Switcher */}
         <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
@@ -643,12 +698,88 @@ export const RepairShopPurchasesPage = () => {
 };
 
 /**
- * 5. Transactions Page (/repair-shop/transactions)
+ * 5. Transactions Page (/repair-shop/transactions) — Live from transactionService (Module 9)
  */
 export const RepairShopTransactionsPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { t } = useLanguage();
-  const [txns] = useState(MOCK_COLLECTOR_TRANSACTIONS);
+  const activeBuyerId = user?.userId || 'SHOP-0001';
+  const [transactions, setTransactions] = useState([]);
+  const [receiptData, setReceiptData] = useState(null);
+
+  // Payment modal state
+  const [paymentModalTx, setPaymentModalTx] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentRefNote, setPaymentRefNote] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+
+  const refreshList = () => {
+    setTransactions(getTransactionsByBuyer(activeBuyerId));
+  };
+
+  useEffect(() => {
+    refreshList();
+  }, [activeBuyerId]);
+
+  const handleViewReceipt = (tx) => {
+    const handovers = getHandoversByTransaction(tx.transactionId);
+    const payments = getPaymentsByTransaction(tx.transactionId);
+    setReceiptData({ transaction: tx, handover: handovers[0] || null, payment: payments[0] || null });
+  };
+
+  const handleConfirmReceipt = (tx) => {
+    try {
+      const existing = getHandoversByTransaction(tx.transactionId);
+      let target = existing[0];
+      if (!target) {
+        target = createHandover({
+          transactionId: tx.transactionId,
+          lotId: tx.lotId,
+          collectorId: tx.collectorId,
+          buyerId: activeBuyerId,
+          buyerRole: 'repair',
+          materialCategory: tx.materialCategory,
+          weight: tx.weight,
+          weightUnit: tx.weightUnit,
+          handoverMethod: 'collector_delivers',
+          handoverLocation: { area: 'Repair Shop Facility', city: '', state: '' }
+        });
+      }
+      confirmBuyerReceipt(target.handoverId, activeBuyerId);
+      refreshList();
+    } catch (err) {
+      console.error('Failed to confirm receipt:', err);
+    }
+  };
+
+  const handleOpenPayment = (tx) => {
+    setPaymentModalTx(tx);
+    setPaymentMethod('Cash');
+    setPaymentRefNote('');
+    setPaymentError('');
+  };
+
+  const handleSavePaymentSubmit = () => {
+    if (!paymentModalTx) return;
+    try {
+      createPaymentRecord({
+        transactionId: paymentModalTx.transactionId,
+        collectorId: paymentModalTx.collectorId,
+        buyerId: activeBuyerId,
+        buyerRole: 'repair',
+        amount: paymentModalTx.totalAmount,
+        currency: 'INR',
+        paymentMethod,
+        referenceNote: paymentRefNote.trim(),
+        recordedBy: activeBuyerId
+      });
+      refreshList();
+      setPaymentModalTx(null);
+    } catch (err) {
+      setPaymentError(err.message || 'Payment recording failed');
+    }
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '3rem' }}>
@@ -667,35 +798,161 @@ export const RepairShopTransactionsPage = () => {
 
         <RepairShopNavBar />
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          {txns.map((tItem) => (
-            <Card key={tItem.id} style={{ padding: '1.15rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                      {tItem.id}
-                    </span>
-                    <Badge variant={tItem.statusType === 'completed' ? 'success' : 'warning'}>
-                      {tItem.statusBadge}
-                    </Badge>
+        {transactions.length === 0 ? (
+          <Card style={{ textAlign: 'center', padding: '3rem 1.5rem', border: '1.5px dashed #cbd5e1' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📄</div>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800 }}>{t('noTransactionsYet')}</h2>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '0.4rem' }}>
+              Transactions appear here once your offers are accepted by a Collector.
+            </p>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {transactions.map((tx) => {
+              const isCompleted = tx.transactionStatus === 'completed';
+              const canConfirmReceipt = tx.handoverStatus !== 'confirmed';
+              const canRecordPayment = tx.paymentStatus !== 'recorded';
+
+              return (
+                <Card key={tx.transactionId} style={{ padding: '1.15rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        {[tx.transactionId, tx.offerId, tx.lotId].map((id) => (
+                          <span key={id} style={{ fontSize: '0.72rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>{id}</span>
+                        ))}
+                        <Badge variant={isCompleted ? 'success' : 'warning'}>
+                          {tx.transactionStatus?.replace(/_/g, ' ')}
+                        </Badge>
+                        {tx.handoverStatus === 'confirmed' && <Badge variant="success">Handover Confirmed ✓</Badge>}
+                        {tx.paymentStatus === 'recorded' && <Badge variant="success">Payment Recorded ✓</Badge>}
+                      </div>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '4px' }}>
+                        {tx.materialCategory}
+                      </h3>
+                      <p style={{ fontSize: '0.85rem', color: '#475569' }}>
+                        {tx.weight} {tx.weightUnit} • Collector: <strong>{tx.collectorName}</strong>
+                      </p>
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#15803d', display: 'block' }}>₹{(tx.totalAmount || 0).toLocaleString('en-IN')}</span>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: '6px' }}>
+                        {canConfirmReceipt && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            id={`btn-confirm-receipt-${tx.transactionId}`}
+                            onClick={() => handleConfirmReceipt(tx)}
+                          >
+                            {t('confirmReceipt')}
+                          </Button>
+                        )}
+                        {canRecordPayment && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            id={`btn-rs-payment-${tx.transactionId}`}
+                            onClick={() => handleOpenPayment(tx)}
+                          >
+                            {t('recordPayment')}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          id={`btn-rs-receipt-${tx.transactionId}`}
+                          onClick={() => handleViewReceipt(tx)}
+                        >
+                          {t('viewReceipt')}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '4px' }}>
-                    {tItem.material}
-                  </h3>
-                  <p style={{ fontSize: '0.85rem', color: '#475569' }}>
-                    Weight: <strong>{tItem.weight}</strong> • Buyer: <strong>{tItem.buyerName}</strong>
-                  </p>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Payment Modal */}
+        {paymentModalTx && (
+          <div
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9000,
+              background: 'rgba(0,0,0,0.45)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '1rem'
+            }}
+            onClick={() => setPaymentModalTx(null)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: '#ffffff',
+                borderRadius: '12px',
+                padding: '1.5rem',
+                maxWidth: '440px',
+                width: '100%',
+                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+              }}
+            >
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.35rem' }}>
+                💰 {t('recordPayment')}
+              </h3>
+              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', color: '#92400e', marginBottom: '1rem', fontWeight: 600 }}>
+                ⚠️ Demo payment record — not real payment processing.
+              </div>
+
+              <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1rem' }}>
+                Transaction <strong>{paymentModalTx.transactionId}</strong> • Total: <strong style={{ color: '#15803d' }}>₹{(paymentModalTx.totalAmount || 0).toLocaleString('en-IN')}</strong>
+              </p>
+
+              {paymentError && (
+                <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+                  {paymentError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  >
+                    {VALID_PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
                 </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803d' }}>{tItem.amount}</span>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>{tItem.date}</span>
+                <div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    Reference Note
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Paid in cash at handoff / Demo UPI ref"
+                    value={paymentRefNote}
+                    onChange={(e) => setPaymentRefNote(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  />
                 </div>
               </div>
-            </Card>
-          ))}
-        </div>
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <Button variant="outline" onClick={() => setPaymentModalTx(null)}>Cancel</Button>
+                <Button variant="primary" id="btn-submit-rs-payment" onClick={handleSavePaymentSubmit}>
+                  Save Payment Record
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* LOWER-LEFT: Account Switcher */}
         <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
@@ -705,6 +962,21 @@ export const RepairShopTransactionsPage = () => {
           <AccountSwitcher dropup={true} />
         </div>
       </PageContainer>
+
+      {/* Receipt Modal */}
+      {receiptData && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          onClick={() => setReceiptData(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+            <DigitalScrapReceipt transaction={receiptData.transaction} handover={receiptData.handover} payment={receiptData.payment} />
+            <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
+              <Button variant="outline" onClick={() => setReceiptData(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

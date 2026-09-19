@@ -62,6 +62,25 @@ import { estimateFairPrice } from '../../services/priceIntelligenceService';
 import { evaluateReusePotential } from '../../services/reuseIntelligenceService';
 import { findRepairShopMatches } from '../../services/repairMatchingService';
 import { createRepairInquiry } from '../../services/repairShopService';
+import { findRecyclerMatches } from '../../services/recyclerMatchingService';
+import { createRecyclerInquiry } from '../../services/recyclerInquiryService';
+import { getOffersForLot, acceptOffer } from '../../services/offerService';
+import {
+  createTransaction,
+  getTransactionsByCollector,
+  getCollectorEarnings
+} from '../../services/transactionService';
+import {
+  createHandover,
+  confirmCollectorHandover,
+  getHandoversByTransaction
+} from '../../services/handoverService';
+import {
+  createPaymentRecord,
+  getPaymentsByTransaction,
+  VALID_PAYMENT_METHODS
+} from '../../services/paymentService';
+import DigitalScrapReceipt from '../../components/transactions/DigitalScrapReceipt';
 
 /**
  * 7-Step Mobile-First Scrap Lot Creation Wizard for Collector (Module 3)
@@ -175,6 +194,52 @@ export const CollectorSellPage = () => {
       setInterestSentShops((prev) => [...prev, targetShop.repairShopId]);
     } catch (err) {
       console.error('Failed to send interest to repair shop:', err);
+    }
+  };
+
+  // Module 7: Authorized Recycler Marketplace State
+  const [showRecyclersModal, setShowRecyclersModal] = useState(false);
+  const [selectedRecyclerDetails, setSelectedRecyclerDetails] = useState(null);
+  const [inquirySentRecyclers, setInquirySentRecyclers] = useState([]);
+  const [lastCreatedInquiry, setLastCreatedInquiry] = useState(null);
+
+  // Compute matching authorized recyclers dynamically (Module 7)
+  const recyclerMatches = useMemo(() => {
+    if (!reusePotential || (reusePotential.pathway !== 'recycle' && reusePotential.pathway !== 'both')) {
+      return [];
+    }
+    const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === materialType);
+    const category = selectedMatObj?.category || materialType;
+    return findRecyclerMatches({
+      materialCategory: category,
+      weight: parseFloat(weight) || 0,
+      location: locationArea,
+      condition
+    });
+  }, [reusePotential, materialType, weight, locationArea, condition]);
+
+  const handleSendRecyclerInquiry = (recMatch) => {
+    const targetRecycler = recMatch.recycler || recMatch;
+    try {
+      const inq = createRecyclerInquiry({
+        collectorId: activeCollectorId,
+        collectorName: user?.name || 'Ramesh Kumar',
+        lotId: createdLot?.id || null,
+        recyclerId: targetRecycler.recyclerId,
+        recyclerName: targetRecycler.businessName,
+        materialCategory: materialType,
+        materialSubcategory,
+        condition,
+        weight: parseFloat(weight) || 0,
+        weightUnit,
+        collectorLocation: locationArea,
+        estimatedPrice: priceEstimate ? `₹${priceEstimate.minPrice} – ₹${priceEstimate.maxPrice} / kg` : null
+      });
+      setLastCreatedInquiry(inq);
+      setInquirySentRecyclers((prev) => [...prev, targetRecycler.recyclerId]);
+      return inq;
+    } catch (err) {
+      console.error('Failed to send inquiry to recycler:', err);
     }
   };
 
@@ -1810,7 +1875,61 @@ export const CollectorSellPage = () => {
                 </div>
 
                 {/* Pathway Specific Action */}
-                {(reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? (
+                {reusePotential.pathway === 'both' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0f172a' }}>
+                      Choose Pathway (Explore either or both):
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <button
+                        id="btn-find-repair-shops"
+                        type="button"
+                        onClick={() => setShowRepairShopsModal(true)}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: '#fffbeb',
+                          border: '1.5px solid #fde68a',
+                          padding: '0.65rem 0.5rem',
+                          borderRadius: '8px',
+                          color: '#92400e',
+                          fontWeight: 800,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Wrench size={16} />
+                        <span>🔧 {t('findRepairShops')} ({repairShopMatches.length})</span>
+                      </button>
+
+                      <button
+                        id="btn-find-authorized-recyclers"
+                        type="button"
+                        onClick={() => setShowRecyclersModal(true)}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: '#f0f9ff',
+                          border: '1.5px solid #bae6fd',
+                          padding: '0.65rem 0.5rem',
+                          borderRadius: '8px',
+                          color: '#0369a1',
+                          fontWeight: 800,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Recycle size={16} />
+                        <span>♻️ {t('findAuthorizedRecyclers')} ({recyclerMatches.length})</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : reusePotential.pathway === 'reuse' ? (
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                       <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#92400e' }}>
@@ -1867,41 +1986,60 @@ export const CollectorSellPage = () => {
                     )}
                   </div>
                 ) : (
-                  <div
-                    style={{
-                      background: '#f0f9ff',
-                      border: '1px solid #bae6fd',
-                      borderRadius: '8px',
-                      padding: '0.65rem 0.85rem',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <span style={{ fontSize: '0.78rem', color: '#0369a1' }}>
-                      {t('recyclingRecommendedDesc')}
-                    </span>
-                    <button
-                      id="btn-continue-recycler"
-                      type="button"
-                      onClick={() => {
-                        const el = document.getElementById('btn-create-lot');
-                        el?.scrollIntoView({ behavior: 'smooth' });
-                      }}
-                      style={{
-                        background: '#0284c7',
-                        color: '#ffffff',
-                        border: 'none',
-                        padding: '0.45rem 0.85rem',
-                        borderRadius: '6px',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {t('continueToRecycler')} →
-                    </button>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369a1' }}>
+                        ♻️ {recyclerMatches.length} {t('authorizedRecyclers')}
+                      </span>
+                      <button
+                        id="btn-find-authorized-recyclers"
+                        type="button"
+                        onClick={() => setShowRecyclersModal(true)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: '#0284c7',
+                          color: '#ffffff',
+                          border: 'none',
+                          padding: '0.5rem 0.95rem',
+                          borderRadius: '8px',
+                          fontSize: '0.82rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
+                        }}
+                      >
+                        <Recycle size={14} />
+                        <span>{t('findAuthorizedRecyclers')} ({recyclerMatches.length})</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Preview of Top Recycler Match */}
+                    {recyclerMatches.length > 0 && (
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #bae6fd',
+                          borderRadius: '8px',
+                          padding: '0.65rem 0.85rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        <div>
+                          <strong style={{ color: '#0f172a' }}>{recyclerMatches[0].recycler.businessName}</strong>
+                          <span style={{ color: '#64748b', marginLeft: '6px', fontSize: '0.72rem' }}>
+                            📍 {recyclerMatches[0].recycler.address.city} • Min {recyclerMatches[0].recycler.minimumWeightKg} kg
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 700 }}>
+                          ✓ {recyclerMatches[0].reasons[0]}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2218,6 +2356,346 @@ export const CollectorSellPage = () => {
                       }}
                     >
                       {interestSentShops.includes(selectedShopDetails.repairShopId) ? t('interestSent') : t('sendInterest')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Authorized Recyclers Discovery (Module 7) */}
+            {showRecyclersModal && (
+              <div
+                id="recyclers-modal"
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(15, 23, 42, 0.55)',
+                  backdropFilter: 'blur(3px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem',
+                  zIndex: 9999
+                }}
+                onClick={() => setShowRecyclersModal(false)}
+              >
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    maxWidth: '520px',
+                    width: '100%',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
+                    padding: '1.5rem',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                    border: '1px solid #e2e8f0'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: 34, height: 34, borderRadius: '8px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284c7' }}>
+                        <Recycle size={20} />
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                          {t('authorizedRecyclers')}
+                        </h3>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                          {recyclerMatches.length} facilities accept {materialType}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowRecyclersModal(false)}
+                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.2rem' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '0.75rem', marginBottom: '1rem', fontSize: '0.78rem', color: '#166534' }}>
+                    ℹ️ {t('prototypeRecyclerNotice')}
+                  </div>
+
+                  {lastCreatedInquiry && (
+                    <div
+                      id="inquiry-success-banner"
+                      style={{
+                        background: '#ecfdf5',
+                        border: '1.5px solid #6ee7b7',
+                        borderRadius: '10px',
+                        padding: '0.75rem 1rem',
+                        marginBottom: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#065f46', fontWeight: 800, fontSize: '0.88rem' }}>
+                          <CheckCircle2 size={18} color="#059669" />
+                          <span>{t('inquirySent')}</span>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#047857', marginTop: '2px' }}>
+                          Inquiry ID: <strong style={{ fontFamily: 'monospace' }}>{lastCreatedInquiry.inquiryId}</strong> generated & sent to <strong>{lastCreatedInquiry.recyclerName}</strong>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setLastCreatedInquiry(null)}
+                        style={{ background: 'none', border: 'none', color: '#059669', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {recyclerMatches.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748b' }}>
+                      <Recycle size={32} style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
+                      <p style={{ margin: 0, fontWeight: 700 }}>{t('recyclerNotFound')}</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '1.25rem' }}>
+                      {recyclerMatches.map((match) => {
+                        const rec = match.recycler;
+                        const isSent = inquirySentRecyclers.includes(rec.recyclerId);
+                        return (
+                          <div
+                            key={rec.recyclerId}
+                            style={{
+                              border: '1.5px solid #e2e8f0',
+                              borderRadius: '12px',
+                              padding: '1rem',
+                              background: '#ffffff'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                              <div>
+                                <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: '0 0 2px 0' }}>
+                                  {rec.businessName}
+                                </h4>
+                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                  📍 {rec.address.city}, {rec.address.state} • {rec.pickupAvailable ? '🚚 ' + t('pickupAvailableText') : '🏢 ' + t('dropOffOnly')}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '0.68rem', fontWeight: 800, background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '4px' }}>
+                                {t('demoVerified')}
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: '0.75rem', color: '#475569', marginBottom: '8px' }}>
+                              <span style={{ fontWeight: 700 }}>{t('minimumLotWeight')}:</span> {rec.minimumWeightKg} kg • <span style={{ fontWeight: 700 }}>Services:</span> {rec.services.join(', ')}
+                            </div>
+
+                            {/* Why this recycler reasons */}
+                            <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '0.5rem 0.75rem', marginBottom: '8px', fontSize: '0.72rem', color: '#334155' }}>
+                              <span style={{ fontWeight: 800, color: '#0284c7', display: 'block', marginBottom: '3px' }}>
+                                ✓ {t('whyThisRecycler')}
+                              </span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                {match.reasons.map((r, idx) => (
+                                  <span key={idx}>• {r}</span>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedRecyclerDetails(rec)}
+                                style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', padding: '4px 0' }}
+                              >
+                                {t('viewDetails')} →
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isSent}
+                                onClick={() => handleSendRecyclerInquiry(match)}
+                                style={{
+                                  background: isSent ? '#dcfce7' : '#0284c7',
+                                  color: isSent ? '#15803d' : '#ffffff',
+                                  border: isSent ? '1px solid #86efac' : 'none',
+                                  padding: '0.45rem 0.85rem',
+                                  borderRadius: '6px',
+                                  fontSize: '0.8rem',
+                                  fontWeight: 800,
+                                  cursor: isSent ? 'default' : 'pointer'
+                                }}
+                              >
+                                {isSent ? t('inquirySent') : t('sendInterest')}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowRecyclersModal(false)}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      background: '#f1f5f9',
+                      color: '#475569',
+                      border: 'none',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {t('skipDecideLater')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: Recycler Details */}
+            {selectedRecyclerDetails && (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  backdropFilter: 'blur(3px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem',
+                  zIndex: 10000
+                }}
+                onClick={() => setSelectedRecyclerDetails(null)}
+              >
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    maxWidth: '440px',
+                    width: '100%',
+                    padding: '1.5rem',
+                    border: '1px solid #e2e8f0'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        {selectedRecyclerDetails.businessName}
+                      </h3>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                        ID: {selectedRecyclerDetails.recyclerId} • {selectedRecyclerDetails.authorizationType}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRecyclerDetails(null)}
+                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.2rem' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {lastCreatedInquiry && lastCreatedInquiry.recyclerId === selectedRecyclerDetails.recyclerId && (
+                    <div
+                      style={{
+                        background: '#ecfdf5',
+                        border: '1.5px solid #6ee7b7',
+                        borderRadius: '10px',
+                        padding: '0.65rem 0.85rem',
+                        marginBottom: '1rem',
+                        fontSize: '0.8rem',
+                        color: '#065f46'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800 }}>
+                        <CheckCircle2 size={16} color="#059669" />
+                        <span>Inquiry Generated: <code style={{ fontFamily: 'monospace', color: '#047857' }}>{lastCreatedInquiry.inquiryId}</code></span>
+                      </div>
+                      <span style={{ fontSize: '0.74rem', color: '#047857', display: 'block', marginTop: '2px' }}>
+                        Interest sent successfully. Recycler will review specifications.
+                      </span>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>Facility Address</span>
+                      <strong>📍 {selectedRecyclerDetails.address.area}, {selectedRecyclerDetails.address.city}, {selectedRecyclerDetails.address.state} - {selectedRecyclerDetails.address.pincode}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>Contact Person</span>
+                      <strong>{selectedRecyclerDetails.contactName} • {selectedRecyclerDetails.phone}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>Accepted Materials</span>
+                      <strong>{selectedRecyclerDetails.acceptedMaterials?.join(', ')}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>{t('operatingAreasText')}</span>
+                      <span>{selectedRecyclerDetails.operatingAreas?.join(', ')}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>{t('minimumLotWeight')}</span>
+                      <strong>{selectedRecyclerDetails.minimumWeightKg} kg</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>{t('paymentMethodsText')}</span>
+                      <span>{selectedRecyclerDetails.paymentMethods?.join(', ')}</span>
+                    </div>
+                    <div style={{ background: '#f8fafc', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', color: '#475569' }}>
+                      <span style={{ fontWeight: 700, display: 'block' }}>Authorization Reference:</span>
+                      <code>{selectedRecyclerDetails.authorizationNumber}</code> ({selectedRecyclerDetails.verificationStatus})
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRecyclerDetails(null)}
+                      style={{
+                        flex: 1,
+                        padding: '0.65rem',
+                        borderRadius: '8px',
+                        background: '#f1f5f9',
+                        color: '#475569',
+                        border: 'none',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      disabled={inquirySentRecyclers.includes(selectedRecyclerDetails.recyclerId)}
+                      onClick={() => {
+                        handleSendRecyclerInquiry(selectedRecyclerDetails);
+                        setSelectedRecyclerDetails(null);
+                      }}
+                      style={{
+                        flex: 2,
+                        padding: '0.65rem',
+                        borderRadius: '8px',
+                        background: inquirySentRecyclers.includes(selectedRecyclerDetails.recyclerId) ? '#dcfce7' : '#0284c7',
+                        color: inquirySentRecyclers.includes(selectedRecyclerDetails.recyclerId) ? '#15803d' : '#ffffff',
+                        border: 'none',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {inquirySentRecyclers.includes(selectedRecyclerDetails.recyclerId) ? t('inquirySent') : t('sendInterest')}
                     </button>
                   </div>
                 </div>
@@ -2650,6 +3128,55 @@ export const CollectorSellPage = () => {
                 </div>
               )}
 
+              {/* Module 7: Step 7 Recycler Opportunity Banner */}
+              {reusePotential && (reusePotential.pathway === 'recycle' || reusePotential.pathway === 'both') && (
+                <div
+                  id="success-recycler-card"
+                  style={{
+                    background: '#f0f9ff',
+                    border: '1.5px solid #bae6fd',
+                    borderRadius: '12px',
+                    padding: '0.9rem',
+                    marginBottom: '1.25rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0369a1', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Recycle size={15} />
+                      <span>{t('recyclingRecommendedDesc')}</span>
+                    </span>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 800, background: '#bae6fd', color: '#0369a1', padding: '2px 6px', borderRadius: '4px' }}>
+                      {t('pathwayRecycle')}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#0369a1', margin: '0 0 8px 0' }}>
+                    {recyclerMatches.length} authorized recyclers accept {materialType}. You can dispatch or schedule a pickup directly.
+                  </p>
+                  <button
+                    id="btn-success-find-recyclers"
+                    type="button"
+                    onClick={() => setShowRecyclersModal(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: '#0284c7',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '0.45rem 0.85rem',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Recycle size={13} />
+                    <span>{t('findAuthorizedRecyclers')} ({recyclerMatches.length})</span>
+                  </button>
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <button
@@ -2733,10 +3260,121 @@ export const CollectorSellPage = () => {
  */
 export const CollectorTransactionsPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { t } = useLanguage();
 
+  const activeCollectorId = user?.userId || 'usr-collector-01';
+  const [transactions, setTransactions] = useState([]);
+  const [receiptData, setReceiptData] = useState(null);
+
+  // Handover modal state
+  const [handoverModalTx, setHandoverModalTx] = useState(null);
+  const [handoverMethod, setHandoverMethod] = useState('collector_delivers');
+  const [handoverLocation, setHandoverLocation] = useState('');
+  const [handoverNotes, setHandoverNotes] = useState('');
+
+  // Payment modal state
+  const [paymentModalTx, setPaymentModalTx] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('Cash');
+  const [paymentRefNote, setPaymentRefNote] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+
+  const refreshList = () => {
+    const data = getTransactionsByCollector(activeCollectorId);
+    setTransactions(data);
+  };
+
+  useEffect(() => {
+    refreshList();
+  }, [activeCollectorId]);
+
+  const handleViewReceipt = (tx) => {
+    const handovers = getHandoversByTransaction(tx.transactionId);
+    const payments = getPaymentsByTransaction(tx.transactionId);
+    setReceiptData({
+      transaction: tx,
+      handover: handovers[0] || null,
+      payment: payments[0] || null
+    });
+  };
+
+  const handleOpenHandover = (tx) => {
+    setHandoverModalTx(tx);
+    setHandoverMethod('collector_delivers');
+    setHandoverLocation('');
+    setHandoverNotes('');
+  };
+
+  const handleConfirmHandoverSubmit = () => {
+    if (!handoverModalTx) return;
+    try {
+      const existing = getHandoversByTransaction(handoverModalTx.transactionId);
+      let targetHandover = existing[0];
+      if (!targetHandover) {
+        targetHandover = createHandover({
+          transactionId: handoverModalTx.transactionId,
+          lotId: handoverModalTx.lotId,
+          collectorId: activeCollectorId,
+          buyerId: handoverModalTx.buyerId,
+          buyerRole: handoverModalTx.buyerRole,
+          materialCategory: handoverModalTx.materialCategory,
+          weight: handoverModalTx.weight,
+          weightUnit: handoverModalTx.weightUnit,
+          handoverMethod,
+          handoverLocation: { area: handoverLocation.trim() || 'Collector Location', city: '', state: '' },
+          notes: handoverNotes.trim()
+        });
+      }
+      confirmCollectorHandover(targetHandover.handoverId, activeCollectorId);
+      refreshList();
+      setHandoverModalTx(null);
+    } catch (err) {
+      console.error('Failed to confirm handover:', err);
+    }
+  };
+
+  const handleOpenPayment = (tx) => {
+    setPaymentModalTx(tx);
+    setPaymentMethod('Cash');
+    setPaymentRefNote('');
+    setPaymentError('');
+  };
+
+  const handleSavePaymentSubmit = () => {
+    if (!paymentModalTx) return;
+    try {
+      createPaymentRecord({
+        transactionId: paymentModalTx.transactionId,
+        collectorId: activeCollectorId,
+        buyerId: paymentModalTx.buyerId,
+        buyerRole: paymentModalTx.buyerRole,
+        amount: paymentModalTx.totalAmount,
+        currency: 'INR',
+        paymentMethod,
+        referenceNote: paymentRefNote.trim(),
+        recordedBy: activeCollectorId
+      });
+      refreshList();
+      setPaymentModalTx(null);
+    } catch (err) {
+      setPaymentError(err.message || 'Payment recording failed');
+    }
+  };
+
+  const statusBadge = (status) => {
+    const map = {
+      completed: { variant: 'success', label: '✓ Completed' },
+      handover_pending: { variant: 'warning', label: '⏳ Handover Pending' },
+      payment_pending: { variant: 'warning', label: '⏳ Payment Pending' },
+      payment_recorded: { variant: 'info', label: '💰 Payment Recorded' },
+      created: { variant: 'neutral', label: 'Created' },
+      cancelled: { variant: 'error', label: 'Cancelled' },
+    };
+    return map[status] || { variant: 'neutral', label: status };
+  };
+
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '4rem' }}>
       <PageContainer mobile>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2749,53 +3387,296 @@ export const CollectorTransactionsPage = () => {
             </button>
             <h1 style={{ fontSize: '1.3rem', fontWeight: 800 }}>{t('transactions')}</h1>
           </div>
-          <Badge variant="neutral">2 Records</Badge>
+          <Badge variant="neutral">{transactions.length} {transactions.length === 1 ? 'Record' : 'Records'}</Badge>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          {MOCK_COLLECTOR_TRANSACTIONS.map((tx) => (
-            <Card
-              key={tx.id}
-              style={{
-                padding: '1.15rem',
-                borderLeft: tx.statusType === 'completed' ? '5px solid #16a34a' : '5px solid #d97706'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                <Badge variant={tx.statusType === 'completed' ? 'success' : 'warning'}>
-                  {tx.statusBadge}
-                </Badge>
-                <span style={{ fontSize: '1.25rem', fontWeight: 800, color: tx.statusType === 'completed' ? '#15803d' : '#b45309' }}>
-                  {tx.amount}
-                </span>
-              </div>
+        {transactions.length === 0 ? (
+          <Card style={{ textAlign: 'center', padding: '3rem 1.5rem', border: '1.5px dashed #cbd5e1' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>📄</div>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.4rem' }}>{t('noTransactionsYet')}</h2>
+            <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Accept an offer on a scrap lot to create your first transaction.</p>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {transactions.map((tx) => {
+              const badge = statusBadge(tx.transactionStatus);
+              const isCompleted = tx.transactionStatus === 'completed';
+              const canHandover = tx.handoverStatus !== 'confirmed' && tx.handoverStatus !== 'collector_confirmed';
+              const canRecordPayment = tx.paymentStatus !== 'recorded';
 
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '2px' }}>
-                {tx.material}
-              </h3>
-              <p style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '0.75rem' }}>
-                Weight: <strong>{tx.weight}</strong> • Buyer: <strong>{tx.buyerName}</strong> ({tx.buyerType})
-              </p>
+              return (
+                <Card
+                  key={tx.transactionId}
+                  className="collector-transaction-card"
+                  style={{
+                    padding: '1.15rem',
+                    borderLeft: `5px solid ${isCompleted ? '#16a34a' : '#d97706'}`
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <Badge variant={badge.variant}>{badge.label}</Badge>
+                      {tx.handoverStatus === 'confirmed' && (
+                        <Badge variant="success">Handover ✓</Badge>
+                      )}
+                      {tx.paymentStatus === 'recorded' && (
+                        <Badge variant="success">Paid ({tx.paymentMethod}) ✓</Badge>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 800, color: isCompleted ? '#15803d' : '#b45309' }}>
+                      ₹{(tx.totalAmount || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '0.65rem', fontSize: '0.75rem', color: '#64748b' }}>
-                <span>LOT: <strong>{tx.id}</strong> • {tx.date}</span>
-                <span style={{ fontWeight: 600, color: '#16a34a' }}>{tx.paymentMode}</span>
-              </div>
-            </Card>
-          ))}
-        </div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '2px' }}>{tx.materialCategory}</h3>
+                  <p style={{ fontSize: '0.82rem', color: '#475569', marginBottom: '0.65rem' }}>
+                    {tx.weight} {tx.weightUnit} • ₹{tx.agreedPrice}/kg • {tx.buyerName} ({tx.buyerRole})
+                  </p>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '0.6rem', fontSize: '0.74rem', color: '#64748b' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {[tx.transactionId, tx.offerId, tx.lotId].map((id) => (
+                        <span key={id} style={{ fontFamily: 'monospace', fontWeight: 700, background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px', color: '#0f172a' }}>{id}</span>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {canHandover && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          id={`btn-handover-${tx.transactionId}`}
+                          onClick={() => handleOpenHandover(tx)}
+                        >
+                          {t('confirmHandover')}
+                        </Button>
+                      )}
+                      {canRecordPayment && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          id={`btn-record-payment-${tx.transactionId}`}
+                          onClick={() => handleOpenPayment(tx)}
+                        >
+                          {t('recordPayment')}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        id={`btn-view-receipt-${tx.transactionId}`}
+                        onClick={() => handleViewReceipt(tx)}
+                      >
+                        {t('viewReceipt')}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </PageContainer>
+
+      {/* Handover Modal */}
+      {handoverModalTx && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9000,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem'
+          }}
+          onClick={() => setHandoverModalTx(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#ffffff',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              maxWidth: '440px',
+              width: '100%',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+            }}
+          >
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.5rem' }}>
+              📦 {t('confirmHandover')}
+            </h3>
+            <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1rem' }}>
+              Transaction <strong>{handoverModalTx.transactionId}</strong> • {handoverModalTx.materialCategory} ({handoverModalTx.weight} {handoverModalTx.weightUnit})
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.25rem' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Handover Method
+                </label>
+                <select
+                  value={handoverMethod}
+                  onChange={(e) => setHandoverMethod(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                >
+                  <option value="collector_delivers">Collector Delivers to Buyer</option>
+                  <option value="buyer_pickup">Buyer Pickup</option>
+                  <option value="drop_off">Drop-off at Designated Facility</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Handover Location (Descriptive)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Gunupur Collector Point / MIDC Facility"
+                  value={handoverLocation}
+                  onChange={(e) => setHandoverLocation(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Optional delivery details..."
+                  value={handoverNotes}
+                  onChange={(e) => setHandoverNotes(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <Button variant="outline" onClick={() => setHandoverModalTx(null)}>Cancel</Button>
+              <Button variant="primary" id="btn-submit-handover" onClick={handleConfirmHandoverSubmit}>
+                Confirm Handover
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {paymentModalTx && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9000,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem'
+          }}
+          onClick={() => setPaymentModalTx(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#ffffff',
+              borderRadius: '12px',
+              padding: '1.5rem',
+              maxWidth: '440px',
+              width: '100%',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+            }}
+          >
+            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.35rem' }}>
+              💰 {t('recordPayment')}
+            </h3>
+            <div style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', color: '#92400e', marginBottom: '1rem', fontWeight: 600 }}>
+              ⚠️ Demo payment record — not real payment processing.
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1rem' }}>
+              Transaction <strong>{paymentModalTx.transactionId}</strong> • Total: <strong style={{ color: '#15803d' }}>₹{(paymentModalTx.totalAmount || 0).toLocaleString('en-IN')}</strong>
+            </p>
+
+            {paymentError && (
+              <div style={{ background: '#fee2e2', color: '#dc2626', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+                {paymentError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.25rem' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Payment Method
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                >
+                  {VALID_PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Reference Note
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Paid in cash at handoff / Demo UPI ref"
+                  value={paymentRefNote}
+                  onChange={(e) => setPaymentRefNote(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <Button variant="outline" onClick={() => setPaymentModalTx(null)}>Cancel</Button>
+              <Button variant="primary" id="btn-submit-payment" onClick={handleSavePaymentSubmit}>
+                Save Payment Record
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt Modal */}
+      {receiptData && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9000,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem'
+          }}
+          onClick={() => setReceiptData(null)}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+            <DigitalScrapReceipt
+              transaction={receiptData.transaction}
+              handover={receiptData.handover}
+              payment={receiptData.payment}
+            />
+            <div style={{ textAlign: 'center', marginTop: '0.75rem' }}>
+              <Button variant="outline" onClick={() => setReceiptData(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <MobileBottomNav role="COLLECTOR" />
     </div>
   );
 };
 
 /**
- * Simple Collector Earnings Screen
+ * Collector Earnings Screen — Live from transactionService (Module 9)
  */
 export const CollectorEarningsPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { t } = useLanguage();
+
+  const activeCollectorId = user?.userId || 'usr-collector-01';
+  const earnings = getCollectorEarnings(activeCollectorId);
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
@@ -2811,63 +3692,95 @@ export const CollectorEarningsPage = () => {
           <h1 style={{ fontSize: '1.3rem', fontWeight: 800 }}>{t('earnings')}</h1>
         </div>
 
-        {/* Hero Card: THIS MONTH */}
+        {/* Hero Card */}
         <div className="card-hero-earnings" style={{ marginBottom: '1.25rem' }}>
           <span style={{ fontSize: '0.85rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            THIS MONTH / इस महीने
+            {t('recordedEarnings')}
           </span>
           <div style={{ fontSize: '2.6rem', fontWeight: 800, color: '#ffffff', margin: '0.25rem 0' }}>
-            {MOCK_COLLECTOR_DATA.thisMonthTotal}
+            ₹{earnings.totalRecorded.toLocaleString('en-IN')}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', borderTop: '1px solid rgba(255,255,255,0.12)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
             <div>
               <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Completed ✓</span>
               <strong style={{ fontSize: '1.1rem', color: '#86efac' }}>
-                {MOCK_COLLECTOR_DATA.completedEarnings}
+                ₹{earnings.totalRecorded.toLocaleString('en-IN')}
               </strong>
             </div>
             <div>
               <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block' }}>Pending ⏳</span>
               <strong style={{ fontSize: '1.1rem', color: '#fde68a' }}>
-                {MOCK_COLLECTOR_DATA.pendingEarnings}
+                ₹{earnings.totalPending.toLocaleString('en-IN')}
               </strong>
             </div>
           </div>
         </div>
 
-        {/* Recent Earnings List */}
+        {/* Summary Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+          {[
+            { label: t('completedTransactions'), value: earnings.completedCount, color: '#15803d' },
+            { label: 'Active Transactions', value: earnings.activeTransactions, color: '#1d4ed8' },
+          ].map(({ label, value, color }) => (
+            <Card key={label} style={{ padding: '0.85rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.6rem', fontWeight: 900, color }}>{value}</div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>{label}</div>
+            </Card>
+          ))}
+        </div>
+
+        {/* Recent Transactions */}
         <Card style={{ marginBottom: '1.25rem' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.85rem' }}>
-            Recent Earnings (हाल की बिक्री)
+            {t('transactionHistory')}
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {MOCK_COLLECTOR_DATA.recentEarningsBreakdown.map((item, idx) => (
-              <div
-                key={idx}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '0.65rem 0.75rem',
-                  borderRadius: '8px',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0'
-                }}
-              >
-                <div>
-                  <strong style={{ fontSize: '0.92rem', display: 'block' }}>{item.material}</strong>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                    {item.weight} • {item.date}
-                  </span>
-                </div>
-                <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#15803d' }}>
-                  {item.amount}
-                </span>
-              </div>
-            ))}
-          </div>
+          {earnings.recentTransactions.length === 0 ? (
+            <p style={{ fontSize: '0.85rem', color: '#64748b' }}>{t('noTransactionsYet')}</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {earnings.recentTransactions.map((tx) => {
+                const isPaid = tx.paymentStatus === 'recorded';
+                return (
+                  <div
+                    key={tx.transactionId}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '0.65rem 0.75rem',
+                      borderRadius: '8px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0'
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: '0.92rem', display: 'block' }}>
+                        {tx.materialCategory}
+                      </strong>
+                      <span style={{ fontSize: '0.74rem', color: '#64748b', fontFamily: 'monospace' }}>
+                        {tx.transactionId} • {tx.weight} {tx.weightUnit}
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '1.05rem', fontWeight: 800, color: isPaid ? '#15803d' : '#b45309', display: 'block' }}>
+                        ₹{(tx.totalAmount || 0).toLocaleString('en-IN')}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: isPaid ? '#16a34a' : '#92400e', fontWeight: 600 }}>
+                        {isPaid ? '✓ Paid' : '⏳ Pending'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
+
+        {/* Disclaimer */}
+        <div style={{ fontSize: '0.74rem', color: '#94a3b8', textAlign: 'center', marginBottom: '2rem' }}>
+          {t('demoPaymentDisclaimer')}
+        </div>
       </PageContainer>
       <MobileBottomNav role="COLLECTOR" />
     </div>
@@ -2985,11 +3898,46 @@ export const CollectorLotsPage = () => {
 
   const activeCollectorId = user?.userId || 'usr-collector-01';
   const [lots, setLots] = useState([]);
+  const [selectedLotForOffers, setSelectedLotForOffers] = useState(null);
+  const [selectedOfferForConfirm, setSelectedOfferForConfirm] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     const data = getScrapLotsByCollector(activeCollectorId);
     setLots(data);
-  }, [activeCollectorId]);
+  }, [activeCollectorId, refreshTrigger]);
+
+  const handleConfirmAccept = () => {
+    if (!selectedOfferForConfirm) return;
+    try {
+      const updatedOffer = acceptOffer(selectedOfferForConfirm.offerId, selectedOfferForConfirm.lotId);
+      // Auto-create a transaction for this accepted offer
+      try {
+        createTransaction({
+          offerId: selectedOfferForConfirm.offerId,
+          lotId: selectedOfferForConfirm.lotId,
+          collectorId: activeCollectorId,
+          collectorName: user?.name || 'Collector',
+          buyerId: selectedOfferForConfirm.buyerId,
+          buyerRole: selectedOfferForConfirm.buyerRole,
+          buyerName: selectedOfferForConfirm.buyerName,
+          materialCategory: selectedOfferForConfirm.materialCategory,
+          materialSubcategory: selectedOfferForConfirm.materialSubcategory || '',
+          weight: selectedOfferForConfirm.weight,
+          weightUnit: selectedOfferForConfirm.weightUnit || 'kg',
+          agreedPrice: selectedOfferForConfirm.offeredPrice,
+          totalAmount: selectedOfferForConfirm.totalOfferValue,
+        });
+      } catch (txErr) {
+        console.warn('Transaction already exists or could not be created:', txErr.message);
+      }
+      setRefreshTrigger((prev) => prev + 1);
+      setSelectedOfferForConfirm(null);
+      setSelectedLotForOffers(null);
+    } catch (err) {
+      console.error('Failed to accept offer:', err);
+    }
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '4rem' }}>
@@ -3303,11 +4251,220 @@ export const CollectorLotsPage = () => {
                       )}
                     </div>
                   </div>
+
+                  {/* Offers Overview Bar (Module 8) */}
+                  {(() => {
+                    const lotOffers = getOffersForLot(lot.id);
+                    const isSelected = lot.offerStatus === 'offer_selected';
+                    return (
+                      <div style={{ marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+                            {t('offers')}:
+                          </span>
+                          {isSelected ? (
+                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '99px' }}>
+                              ✓ {t('offerSelectedStatus')}
+                            </span>
+                          ) : lotOffers.length > 0 ? (
+                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '99px' }}>
+                              {lotOffers.length} {lotOffers.length === 1 ? 'Offer' : 'Offers'}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                              {t('noOffersYet')}
+                            </span>
+                          )}
+                        </div>
+
+                        {lotOffers.length > 0 && (
+                          <Button
+                            id={`btn-compare-offers-${lot.id}`}
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setSelectedLotForOffers(lot)}
+                          >
+                            💰 {t('compareOffers')} ({lotOffers.length})
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </Card>
               );
             })}
           </div>
         )}
+
+        {/* Modal: Compare Offers */}
+        <Modal
+          isOpen={!!selectedLotForOffers}
+          onClose={() => setSelectedLotForOffers(null)}
+          title={`${t('offersForLot')}: ${selectedLotForOffers?.id || ''}`}
+          maxWidth="640px"
+        >
+          {selectedLotForOffers && (() => {
+            const currentLotOffers = getOffersForLot(selectedLotForOffers.id);
+            return (
+              <div>
+                <div style={{ background: '#f8fafc', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div>
+                      <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>
+                        {selectedLotForOffers.materialType || selectedLotForOffers.materialCategory}
+                      </strong>
+                      <span style={{ fontSize: '0.82rem', color: '#64748b', marginLeft: '6px' }}>
+                        • {selectedLotForOffers.weight} {selectedLotForOffers.weightUnit} • {selectedLotForOffers.condition}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#0284c7', fontWeight: 700 }}>
+                      {t('platformEstimate')}: {selectedLotForOffers.estimatedPrice ? `₹${selectedLotForOffers.estimatedPrice}/kg` : 'Pending'}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  {currentLotOffers.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b', fontSize: '0.85rem' }}>
+                      {t('noOffersYet')}
+                    </div>
+                  ) : (
+                    currentLotOffers.map((o) => {
+                      const isAccepted = o.status === 'accepted';
+                      const isRejected = o.status === 'rejected';
+                      return (
+                        <div
+                          key={o.offerId}
+                          style={{
+                            padding: '0.85rem 1rem',
+                            borderRadius: '10px',
+                            border: `1.5px solid ${isAccepted ? '#86efac' : isRejected ? '#fecaca' : '#e2e8f0'}`,
+                            background: isAccepted ? '#f0fdf4' : isRejected ? '#fef2f2' : '#ffffff'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>
+                                  {o.buyerName}
+                                </strong>
+                                <span
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    fontWeight: 800,
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    background: o.buyerRole === 'repair' ? '#fef3c7' : '#e0f2fe',
+                                    color: o.buyerRole === 'repair' ? '#92400e' : '#0369a1'
+                                  }}
+                                >
+                                  {o.buyerRole === 'repair' ? 'Repair Shop (Reuse)' : 'Authorized Recycler'}
+                                </span>
+                              </div>
+                              <div style={{ fontSize: '0.82rem', color: '#475569', marginTop: '2px' }}>
+                                Offered: <strong style={{ color: '#0f172a' }}>₹{o.offeredPrice}/kg</strong> • Total: <strong style={{ color: '#15803d' }}>₹{o.totalOfferValue?.toLocaleString('en-IN')}</strong>
+                              </div>
+                              {o.message && (
+                                <p style={{ fontSize: '0.76rem', color: '#64748b', margin: '3px 0 0 0', fontStyle: 'italic' }}>
+                                  "{o.message}"
+                                </p>
+                              )}
+                            </div>
+
+                            <div style={{ textAlign: 'right' }}>
+                              {isAccepted ? (
+                                <Badge variant="success">Selected ✓</Badge>
+                              ) : isRejected ? (
+                                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#dc2626' }}>Rejected</span>
+                              ) : (
+                                <Button
+                                  id={`btn-select-offer-${o.offerId}`}
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => setSelectedOfferForConfirm(o)}
+                                >
+                                  {t('selectOffer')}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button variant="outline" size="sm" onClick={() => setSelectedLotForOffers(null)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </Modal>
+
+        {/* Modal: Select Offer Confirmation */}
+        <Modal
+          isOpen={!!selectedOfferForConfirm}
+          onClose={() => setSelectedOfferForConfirm(null)}
+          title={t('selectOfferConfirmTitle')}
+          maxWidth="500px"
+        >
+          {selectedOfferForConfirm && (
+            <div>
+              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.86rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Buyer:</span>
+                    <strong>{selectedOfferForConfirm.buyerName}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Buyer Type:</span>
+                    <span>{selectedOfferForConfirm.buyerRole === 'repair' ? 'Repair Shop (Reuse)' : 'Authorized Recycler'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Material:</span>
+                    <span>{selectedOfferForConfirm.materialCategory} ({selectedOfferForConfirm.weight} {selectedOfferForConfirm.weightUnit})</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Offered Rate:</span>
+                    <strong>₹{selectedOfferForConfirm.offeredPrice}/kg</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '6px' }}>
+                    <span style={{ fontWeight: 800, color: '#166534' }}>Total Valuation:</span>
+                    <strong style={{ fontSize: '1.15rem', color: '#15803d' }}>
+                      ₹{selectedOfferForConfirm.totalOfferValue?.toLocaleString('en-IN')}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mandatory Platform Disclaimer */}
+              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', color: '#92400e', padding: '0.75rem 0.9rem', borderRadius: '8px', fontSize: '0.78rem', marginBottom: '1.25rem', lineHeight: 1.4 }}>
+                ⚠️ {t('selectOfferDisclaimer')}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <Button
+                  variant="outline"
+                  fullWidth
+                  onClick={() => setSelectedOfferForConfirm(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  id="btn-confirm-accept-offer"
+                  variant="secondary"
+                  fullWidth
+                  onClick={handleConfirmAccept}
+                >
+                  {t('selectThisOffer')}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
       </PageContainer>
       <MobileBottomNav role="COLLECTOR" />
     </div>

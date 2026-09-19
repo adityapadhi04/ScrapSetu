@@ -78,7 +78,9 @@ const SEED_LOTS = [
     collectorConfirmed: true,
     estimatedPrice: 320,
     estimatedLotValueMin: 720,
-    estimatedLotValueMax: 816
+    estimatedLotValueMax: 816,
+    offerStatus: 'offers_available',
+    transactionStatus: 'completed'
   },
   {
     id: 'LOT-0002',
@@ -105,7 +107,9 @@ const SEED_LOTS = [
     collectorConfirmed: true,
     estimatedPrice: 660,
     estimatedLotValueMin: 3200,
-    estimatedLotValueMax: 3400
+    estimatedLotValueMax: 3400,
+    offerStatus: 'offers_available',
+    transactionStatus: 'created'
   }
 ];
 
@@ -146,6 +150,8 @@ export const getScrapLots = () => {
     return SEED_LOTS;
   }
 };
+
+export const getAllScrapLots = getScrapLots;
 
 /**
  * Retrieve scrap lots belonging exclusively to a specific collector
@@ -302,6 +308,8 @@ export const createScrapLot = ({
     location: normalizedLocation,
     notes: notes?.trim() || '',
     status: 'Created',
+    offerStatus: 'none',
+    transactionStatus: 'none',
     createdAt: materialRecord.createdAt,
     identificationMethod,
     confidenceScore: materialRecord.confidenceScore,
@@ -342,3 +350,66 @@ export const resetScrapLots = () => {
   resetPriceDataset();
   return SEED_LOTS;
 };
+
+/**
+ * Update the offerStatus of a scrap lot (Module 8)
+ * Allowed: 'none', 'offers_available', 'offer_selected'
+ * Does NOT mark lot as sold, paid, or completed.
+ */
+export const updateScrapLotOfferStatus = (lotId, newOfferStatus) => {
+  const allowed = ['none', 'offers_available', 'offer_selected'];
+  if (!allowed.includes(newOfferStatus)) {
+    throw new Error(`Invalid offerStatus: ${newOfferStatus}. Allowed: ${allowed.join(', ')}`);
+  }
+
+  const allLots = getAllScrapLots();
+  const index = allLots.findIndex((l) => l.id === lotId);
+  if (index === -1) {
+    return null;
+  }
+
+  allLots[index] = {
+    ...allLots[index],
+    offerStatus: newOfferStatus
+  };
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SCRAP_LOTS, JSON.stringify(allLots));
+  } catch (e) {
+    console.error('Error updating scrap lot offerStatus:', e);
+  }
+
+  return allLots[index];
+};
+
+/**
+ * Update the transactionStatus of a scrap lot (Module 9)
+ * Allowed: 'none', 'created', 'handover_pending', 'payment_pending', 'completed', 'cancelled'
+ * Does NOT remove offerStatus.
+ */
+export const updateScrapLotTransactionStatus = (lotId, newTransactionStatus) => {
+  const allowed = ['none', 'created', 'handover_pending', 'handover_confirmed', 'payment_pending', 'payment_recorded', 'completed', 'cancelled'];
+  if (!allowed.includes(newTransactionStatus)) {
+    throw new Error(`Invalid transactionStatus: ${newTransactionStatus}`);
+  }
+
+  const allLots = getAllScrapLots();
+  const index = allLots.findIndex((l) => l.id === lotId);
+  if (index === -1) {
+    return null;
+  }
+
+  allLots[index] = {
+    ...allLots[index],
+    transactionStatus: newTransactionStatus
+  };
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SCRAP_LOTS, JSON.stringify(allLots));
+  } catch (e) {
+    console.error('Error updating scrap lot transactionStatus:', e);
+  }
+
+  return allLots[index];
+};
+

@@ -35,15 +35,31 @@ import {
   MOCK_REPAIR_SHOP_OFFERS
 } from '../../data/mockData';
 import { getWantedItems, createWantedItem } from '../../services/repairShopService';
+import { getEligibleLotsForRepairShop } from '../../services/offerMatchingService';
+import { getOffersForBuyer } from '../../services/offerService';
+import MakeOfferModal from '../../components/marketplace/MakeOfferModal';
 
 export const RepairShopDashboard = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const { currentUser } = useAuth();
+  const { user } = useAuth();
+  const activeShopId = (user?.userId?.startsWith('SHOP')) ? user.userId : 'SHOP-0001';
+  const shopName = user?.name || MOCK_REPAIR_SHOP_DATA.shopName;
+
   const [wantedList, setWantedList] = useState(() => {
     const items = getWantedItems('SHOP-0002');
     return items.length > 0 ? items : getWantedItems();
   });
+
+  // Module 8: Eligible Lots and Live Offers State
+  const [eligibleLots, setEligibleLots] = useState(() => getEligibleLotsForRepairShop(activeShopId));
+  const [myOffers, setMyOffers] = useState(() => getOffersForBuyer(activeShopId));
+  const [selectedLotForModal, setSelectedLotForModal] = useState(null);
+
+  const refreshOffersAndLots = () => {
+    setEligibleLots(getEligibleLotsForRepairShop(activeShopId));
+    setMyOffers(getOffersForBuyer(activeShopId));
+  };
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState('Laptop / Computer');
@@ -150,7 +166,7 @@ export const RepairShopDashboard = () => {
               <IndianRupee size={18} color="#0284c7" />
             </div>
             <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a' }}>
-              {MOCK_REPAIR_SHOP_OFFERS.length} Active
+              {myOffers.length} Active
             </div>
             <span style={{ fontSize: '0.75rem', color: '#0369a1', fontWeight: 600 }}>
               1 Accepted by collector →
@@ -250,6 +266,109 @@ export const RepairShopDashboard = () => {
               </Card>
             ))}
           </div>
+        </div>
+
+        {/* Module 8: Available Scrap Lots Section */}
+        <div style={{ marginBottom: '2.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  📦 {t('availableScrapLots')}
+                </h2>
+                <Badge variant="warning">{eligibleLots.length} Eligible</Badge>
+              </div>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px' }}>
+                Collector scrap lots matching your repair specialty, active wanted parts, and regional location:
+              </p>
+            </div>
+          </div>
+
+          {eligibleLots.length === 0 ? (
+            <Card style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+              <Package size={36} style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
+              <p style={{ margin: 0, fontWeight: 700 }}>No eligible scrap lots currently available for repair reuse.</p>
+              <span style={{ fontSize: '0.78rem' }}>When local collectors aggregate compatible electronic components, they will appear here.</span>
+            </Card>
+          ) : (
+            <div className="grid-cols-2" style={{ gap: '1rem' }}>
+              {eligibleLots.map((lot) => {
+                const displayLocation = typeof lot.location === 'string'
+                  ? lot.location
+                  : (lot.location?.area || lot.location?.city || 'Local Pickup');
+                return (
+                  <Card key={lot.id} style={{ padding: '1.2rem', border: '1.5px solid #fef3c7', borderRadius: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                      <div>
+                        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                          {lot.id}
+                        </span>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '3px 0 1px 0' }}>
+                          {lot.materialType || lot.materialCategory}
+                        </h3>
+                        <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                          Weight: <strong style={{ color: '#15803d' }}>{lot.weight} {lot.weightUnit}</strong> • Condition: <strong>{lot.condition}</strong>
+                        </div>
+                      </div>
+                      <Badge variant="warning">
+                        Reuse / Salvage
+                      </Badge>
+                    </div>
+
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.65rem' }}>
+                      📍 {displayLocation}
+                    </div>
+
+                    {/* Platform Estimated Range */}
+                    <div
+                      style={{
+                        background: '#f8fafc',
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: '0.75rem'
+                      }}
+                    >
+                      <span style={{ fontSize: '0.76rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <IndianRupee size={13} color="#d97706" />
+                        <span>{t('platformEstimate')}:</span>
+                      </span>
+                      <strong style={{ fontSize: '0.86rem', color: '#d97706' }}>
+                        {lot.priceEstimate?.priceRangeFormatted || 'Estimate pending'}
+                      </strong>
+                    </div>
+
+                    {/* Why can I offer checklist */}
+                    {lot.reasons && lot.reasons.length > 0 && (
+                      <div style={{ background: '#fffbeb', padding: '6px 10px', borderRadius: '6px', border: '1px solid #fde68a', marginBottom: '0.85rem' }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>
+                          ✓ {t('whyEligible')}
+                        </span>
+                        <ul style={{ margin: 0, paddingLeft: '1rem', fontSize: '0.74rem', color: '#b45309' }}>
+                          {lot.reasons.map((r, idx) => (
+                            <li key={idx}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <Button
+                      id={`btn-repair-offer-${lot.id}`}
+                      variant="accent"
+                      size="sm"
+                      fullWidth
+                      onClick={() => setSelectedLotForModal(lot)}
+                    >
+                      💰 {t('makeOffer')}
+                    </Button>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Matching Components from Collectors */}
@@ -454,6 +573,17 @@ export const RepairShopDashboard = () => {
             </div>
           </form>
         </Modal>
+
+        {/* Module 8: Make Offer Modal */}
+        <MakeOfferModal
+          isOpen={!!selectedLotForModal}
+          onClose={() => setSelectedLotForModal(null)}
+          lot={selectedLotForModal}
+          buyerRole="repair"
+          buyerId={activeShopId}
+          buyerName={shopName}
+          onOfferSubmitted={refreshOffersAndLots}
+        />
 
         {/* LOWER-LEFT: Account Switcher */}
         <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
