@@ -17,6 +17,9 @@ import Button from '../../components/common/Button';
 import PageContainer from '../../components/common/PageContainer';
 import Modal from '../../components/common/Modal';
 import Input from '../../components/common/Input';
+import AccountSwitcher from '../../components/common/AccountSwitcher';
+import { useLanguage } from '../../context/LanguageContext';
+import { RecyclerNavBar } from './RecyclerSubpages';
 import { 
   MOCK_RECYCLER_DATA, 
   MOCK_RECYCLER_LOTS 
@@ -24,6 +27,7 @@ import {
 
 export const RecyclerDashboard = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [selectedLotForOffer, setSelectedLotForOffer] = useState(null);
   const [offerBid, setOfferBid] = useState('');
 
@@ -35,10 +39,10 @@ export const RecyclerDashboard = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '2.5rem' }}>
       <PageContainer maxWidth="1100px">
         {/* Recycler Facility Header & Authorization Status */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>
               {MOCK_RECYCLER_DATA.name}
@@ -61,6 +65,9 @@ export const RecyclerDashboard = () => {
             </span>
           </div>
         </div>
+
+        {/* Recycler Navigation Bar */}
+        <RecyclerNavBar />
 
         {/* 3 Stats Cards: New Lots (12), Pickup Requests (5), Today's Purchases (₹24,500) */}
         <div className="grid-cols-3" style={{ marginBottom: '1.75rem' }}>
@@ -226,6 +233,14 @@ export const RecyclerDashboard = () => {
             </form>
           )}
         </Modal>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
     </div>
   );

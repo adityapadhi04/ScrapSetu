@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, NavLink } from 'react-router-dom';
 import { 
   ArrowLeft, 
   Package, 
@@ -10,7 +10,8 @@ import {
   Clock, 
   User, 
   ShieldCheck, 
-  MapPin 
+  MapPin,
+  LogOut
 } from 'lucide-react';
 import PageContainer from '../../components/common/PageContainer';
 import MobileBottomNav from '../../components/common/MobileBottomNav';
@@ -20,6 +21,8 @@ import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import Input from '../../components/common/Input';
 import AccountSwitcher from '../../components/common/AccountSwitcher';
+import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { 
   MOCK_RECYCLER_DATA, 
   MOCK_RECYCLER_LOTS, 
@@ -27,10 +30,50 @@ import {
 } from '../../data/mockData';
 
 /**
+ * Reusable Recycler Navigation Bar
+ */
+export const RecyclerNavBar = () => {
+  const { t } = useLanguage();
+  const navItems = [
+    { label: `🏠 ${t('dashboard')}`, path: '/recycler', end: true },
+    { label: `📦 ${t('availableLots')}`, path: '/recycler/lots' },
+    { label: `🚚 ${t('pickupRequests')}`, path: '/recycler/pickups' },
+    { label: `💰 ${t('offers')}`, path: '/recycler/offers' },
+    { label: `📋 ${t('orders')}`, path: '/recycler/orders' },
+    { label: `👤 ${t('profile')}`, path: '/recycler/profile' },
+  ];
+
+  return (
+    <div style={{
+      display: 'flex',
+      gap: '8px',
+      overflowX: 'auto',
+      paddingBottom: '8px',
+      marginBottom: '1.5rem',
+      borderBottom: '1px solid #e2e8f0',
+      scrollbarWidth: 'none'
+    }}>
+      {navItems.map((item) => (
+        <NavLink
+          key={item.path}
+          to={item.path}
+          end={item.end}
+          className={({ isActive }) => `btn ${isActive ? 'btn-secondary' : 'btn-ghost'}`}
+          style={{ whiteSpace: 'nowrap', fontSize: '0.86rem', padding: '0.5rem 0.9rem' }}
+        >
+          {item.label}
+        </NavLink>
+      ))}
+    </div>
+  );
+};
+
+/**
  * Recycler Lots Page (Cards matching Step 10)
  */
 export const RecyclerLotsPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [selectedLotForOffer, setSelectedLotForOffer] = useState(null);
   const [offerBid, setOfferBid] = useState('1750');
 
@@ -41,14 +84,16 @@ export const RecyclerLotsPage = () => {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '2.5rem' }}>
       <PageContainer maxWidth="1100px">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
           <button onClick={() => navigate('/recycler')} className="btn btn-ghost" style={{ padding: '6px' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>📦 Available Collector Scrap Lots</h1>
+          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>📦 {t('availableLots')}</h1>
         </div>
+
+        <RecyclerNavBar />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {MOCK_RECYCLER_LOTS.map((lot) => (
@@ -112,6 +157,14 @@ export const RecyclerLotsPage = () => {
             </form>
           )}
         </Modal>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
       <MobileBottomNav role="RECYCLER" />
     </div>
@@ -123,17 +176,20 @@ export const RecyclerLotsPage = () => {
  */
 export const RecyclerPickupsPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [selectedPickup, setSelectedPickup] = useState(null);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '2.5rem' }}>
       <PageContainer maxWidth="1100px">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
           <button onClick={() => navigate('/recycler')} className="btn btn-ghost" style={{ padding: '6px' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>🚚 Pickup Requests</h1>
+          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>🚚 {t('pickupRequests')}</h1>
         </div>
+
+        <RecyclerNavBar />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {MOCK_RECYCLER_PICKUPS.map((pickup) => (
@@ -206,6 +262,14 @@ export const RecyclerPickupsPage = () => {
             </div>
           )}
         </Modal>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
       <MobileBottomNav role="RECYCLER" />
     </div>
@@ -217,16 +281,19 @@ export const RecyclerPickupsPage = () => {
  */
 export const RecyclerOffersPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '2.5rem' }}>
       <PageContainer maxWidth="1100px">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
           <button onClick={() => navigate('/recycler')} className="btn btn-ghost" style={{ padding: '6px' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>💰 My Active Offers & Bids</h1>
+          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>💰 {t('offers')}</h1>
         </div>
+
+        <RecyclerNavBar />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <Card style={{ padding: '1.25rem' }}>
@@ -251,6 +318,14 @@ export const RecyclerOffersPage = () => {
             </div>
           </Card>
         </div>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
       <MobileBottomNav role="RECYCLER" />
     </div>
@@ -258,20 +333,23 @@ export const RecyclerOffersPage = () => {
 };
 
 /**
- * Recycler Transactions Page
+ * Recycler Transactions / Orders Page
  */
 export const RecyclerOrdersPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '2.5rem' }}>
       <PageContainer maxWidth="1100px">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
           <button onClick={() => navigate('/recycler')} className="btn btn-ghost" style={{ padding: '6px' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>📄 Completed Transactions & EPR Credits</h1>
+          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>📄 {t('transactions')} / {t('orders')}</h1>
         </div>
+
+        <RecyclerNavBar />
 
         <Card style={{ padding: '1.25rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -294,6 +372,14 @@ export const RecyclerOrdersPage = () => {
             </Button>
           </div>
         </Card>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
       <MobileBottomNav role="RECYCLER" />
     </div>
@@ -305,16 +391,20 @@ export const RecyclerOrdersPage = () => {
  */
 export const RecyclerProfilePage = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const { t } = useLanguage();
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '2.5rem' }}>
       <PageContainer maxWidth="1100px">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
           <button onClick={() => navigate('/recycler')} className="btn btn-ghost" style={{ padding: '6px' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>👤 Recycler Facility Profile</h1>
+          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>👤 {t('profile')}</h1>
         </div>
+
+        <RecyclerNavBar />
 
         <Card style={{ padding: '1.5rem', marginBottom: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '1rem' }}>
@@ -348,13 +438,45 @@ export const RecyclerProfilePage = () => {
         {/* Switch Account Section */}
         <Card style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
           <h3 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-            🔄 Switch Account
+            🔄 {t('switchAccount')}
           </h3>
           <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '0.85rem' }}>
             Switch to a different portal account on this device.
           </p>
           <AccountSwitcher dropup={false} />
         </Card>
+
+        {/* Logout Section */}
+        <div style={{ marginBottom: '2.5rem' }}>
+          <button
+            id="recycler-logout-button"
+            type="button"
+            onClick={() => {
+              logout();
+              navigate('/login');
+            }}
+            style={{
+              width: '100%',
+              maxWidth: '300px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '0.85rem',
+              borderRadius: '10px',
+              border: '1px solid #fecaca',
+              background: '#fef2f2',
+              color: '#dc2626',
+              fontSize: '0.92rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <LogOut size={18} />
+            <span>{t('logout')}</span>
+          </button>
+        </div>
       </PageContainer>
       <MobileBottomNav role="RECYCLER" />
     </div>

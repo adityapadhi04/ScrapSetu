@@ -18,12 +18,14 @@ import {
   MapPin
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import PageContainer from '../../components/common/PageContainer';
 import Modal from '../../components/common/Modal';
 import Input from '../../components/common/Input';
+import AccountSwitcher from '../../components/common/AccountSwitcher';
 import { RepairShopNavBar } from './RepairShopSubpages';
 import { 
   MOCK_REPAIR_SHOP_DATA,
@@ -35,6 +37,7 @@ import {
 
 export const RepairShopDashboard = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const { currentUser } = useAuth();
   const [wantedList, setWantedList] = useState(MOCK_REPAIR_SHOP_WANTED);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -357,6 +360,14 @@ export const RepairShopDashboard = () => {
             </div>
           </form>
         </Modal>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
     </div>
   );

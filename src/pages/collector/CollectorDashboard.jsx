@@ -15,23 +15,28 @@ import {
   X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getStrings } from '../../locales/strings';
+import { useLanguage } from '../../context/LanguageContext';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import PageContainer from '../../components/common/PageContainer';
 import MobileBottomNav from '../../components/common/MobileBottomNav';
 import Modal from '../../components/common/Modal';
+import AccountSwitcher from '../../components/common/AccountSwitcher';
 import { 
   CORE_MATERIAL_GROUPS, 
   MOCK_COLLECTOR_DATA, 
   MOCK_NEARBY_BUYERS 
 } from '../../data/mockData';
+import { getScrapLotsByCollector } from '../../services/scrapLotService';
 
 export const CollectorDashboard = () => {
   const navigate = useNavigate();
-  const { language } = useAuth();
-  const t = getStrings(language);
+  const { user } = useAuth();
+  const { t } = useLanguage();
+
+  const activeCollectorId = user?.userId || 'usr-collector-01';
+  const myLots = getScrapLotsByCollector(activeCollectorId);
 
   const [activeModal, setActiveModal] = useState(null); // 'prices', 'safety', 'notifications'
   const [selectedBuyer, setSelectedBuyer] = useState(null);
@@ -45,11 +50,11 @@ export const CollectorDashboard = () => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
-                {t.greeting} 👋
+                {t('greeting')} 👋
               </h1>
             </div>
             <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px' }}>
-              {t.welcomeBack}
+              {t('welcomeBack')}
             </p>
           </div>
 
@@ -110,11 +115,11 @@ export const CollectorDashboard = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Camera size={34} strokeWidth={2.5} />
               <span style={{ fontSize: '1.45rem', fontWeight: 800, letterSpacing: '0.02em' }}>
-                📷 {t.sellScrap}
+                📷 {t('sellScrap')}
               </span>
             </div>
             <span style={{ fontSize: '0.82rem', fontWeight: 500, color: '#dcfce7', opacity: 0.95 }}>
-              {t.sellScrapSubtitle}
+              {t('sellScrapSubtitle')}
             </span>
           </button>
         </div>
@@ -124,7 +129,7 @@ export const CollectorDashboard = () => {
           <div className="card-hero-earnings">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {t.todaysEarnings} / आज की कमाई
+                {t('todaysEarnings')}
               </span>
               <TrendingUp size={18} color="#22c55e" />
             </div>
@@ -153,7 +158,7 @@ export const CollectorDashboard = () => {
         {/* QUICK ACTIONS: 4 Big Touch Cards */}
         <div style={{ marginBottom: '1.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t.quickActions} / मुख्य कार्य</h2>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t('quickActions')}</h2>
             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Touch to open</span>
           </div>
 
@@ -166,10 +171,10 @@ export const CollectorDashboard = () => {
             >
               <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>💰</div>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '2px' }}>
-                {t.priceBoard}
+                {t('priceBoard')}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                बाजार भाव (8 e-waste items)
+                {t('prices')} (8 e-waste items)
               </p>
             </Card>
 
@@ -181,10 +186,10 @@ export const CollectorDashboard = () => {
             >
               <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>📦</div>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '2px' }}>
-                {t.myLots}
+                {t('myLots')}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                2 एक्टिव लॉट (Ready)
+                {myLots.length} {myLots.length === 1 ? 'Active Lot' : 'Active Lots'}
               </p>
             </Card>
 
@@ -196,10 +201,10 @@ export const CollectorDashboard = () => {
             >
               <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>📄</div>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '2px' }}>
-                {t.transactions}
+                {t('transactions')}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                पर्ची व भुगतान रिकॉर्ड
+                Receipts & Ledgers
               </p>
             </Card>
 
@@ -211,10 +216,10 @@ export const CollectorDashboard = () => {
             >
               <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>🛡️</div>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#dc2626', marginBottom: '2px' }}>
-                {t.safety}
+                {t('safety')}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#991b1b' }}>
-                सुरक्षा नियम (बैटरी/कांच)
+                Safety Guidelines
               </p>
             </Card>
           </div>
@@ -223,7 +228,7 @@ export const CollectorDashboard = () => {
         {/* NEARBY BUYERS PREVIEW */}
         <div style={{ marginBottom: '1.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t.nearbyBuyers} / पास के खरीदार</h2>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t('nearbyBuyers')}</h2>
             <span style={{ fontSize: '0.78rem', color: '#15803d', fontWeight: 700 }}>2 Verified Nearby</span>
           </div>
 
@@ -254,6 +259,14 @@ export const CollectorDashboard = () => {
               </Card>
             ))}
           </div>
+        </div>
+
+        {/* LOWER NAVIGATION: Account Switcher */}
+        <div style={{ marginTop: '2.5rem', marginBottom: '5.5rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
         </div>
       </PageContainer>
 

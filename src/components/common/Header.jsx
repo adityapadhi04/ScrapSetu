@@ -1,14 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { SUPPORTED_LANGUAGES } from '../../locales/strings';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const Header = () => {
-  const { language, setLanguage, isOffline, toggleOffline } = useAuth();
+  const { isOffline, toggleOffline } = useAuth();
+  const { currentLanguage, setLanguage, t, currentLangObj, supportedLanguages } = useLanguage();
   const [isLangOpen, setIsLangOpen] = useState(false);
   const langMenuRef = useRef(null);
-
-  const currentLangObj = SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
 
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -77,7 +76,7 @@ export const Header = () => {
             <span style={{ fontSize: '0.7rem', color: isOffline ? '#d97706' : '#22c55e' }}>
               {isOffline ? '○' : '●'}
             </span>
-            <span>{isOffline ? 'Offline' : 'Online'}</span>
+            <span>{isOffline ? t('offline') : t('online')}</span>
           </button>
 
           <div style={{ width: '1px', height: '18px', background: '#e2e8f0' }} />
@@ -103,7 +102,7 @@ export const Header = () => {
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
-              title="Select Language"
+              title={t('selectLanguage')}
             >
               <span>🌐</span>
               <span style={{ fontWeight: 600 }}>{currentLangObj.nativeName}</span>
@@ -129,13 +128,13 @@ export const Header = () => {
               >
                 <div style={{ padding: '0.4rem 0.6rem 0.35rem 0.6rem', borderBottom: '1px solid #f1f5f9', marginBottom: '0.3rem' }}>
                   <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    🌐 Select Language
+                    🌐 {t('selectLanguage')}
                   </span>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  {SUPPORTED_LANGUAGES.map((langItem) => {
-                    const isSelected = language === langItem.code;
+                  {supportedLanguages.map((langItem) => {
+                    const isSelected = currentLanguage === langItem.code;
                     return (
                       <button
                         key={langItem.code}

@@ -29,7 +29,8 @@ import {
   X,
   MapPin,
   Phone,
-  QrCode
+  QrCode,
+  LogOut
 } from 'lucide-react';
 import PageContainer from '../../components/common/PageContainer';
 import Card from '../../components/common/Card';
@@ -38,6 +39,8 @@ import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
 import Input from '../../components/common/Input';
 import AccountSwitcher from '../../components/common/AccountSwitcher';
+import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { EmptyState, StatusIndicator } from '../../components/common/FeedbackStates';
 import { 
   CORE_MATERIAL_GROUPS, 
@@ -53,6 +56,8 @@ import {
 
 export const AdminDashboard = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const { t } = useLanguage();
   // Sidebar navigation sections:
   // 'dashboard', 'collectors', 'repair-shops', 'recyclers', 'materials', 'prices', 'lots', 'transactions', 'traceability', 'analytics', 'settings'
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -67,17 +72,17 @@ export const AdminDashboard = () => {
   const [verificationQueue, setVerificationQueue] = useState(MOCK_VERIFICATION_QUEUE);
 
   const sidebarItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'collectors', label: 'Collectors', icon: Users, count: MOCK_ADMIN_COLLECTORS.length },
-    { id: 'repair-shops', label: 'Repair Shops', icon: Store, count: MOCK_ADMIN_REPAIR_SHOPS.length },
-    { id: 'recyclers', label: 'Recyclers', icon: Recycle, count: MOCK_ADMIN_RECYCLERS.length },
-    { id: 'materials', label: 'Materials', icon: Layers, count: materials.length },
-    { id: 'prices', label: 'Prices', icon: DollarSign },
-    { id: 'lots', label: 'Lots', icon: Package, count: MOCK_ADMIN_LOTS.length },
-    { id: 'transactions', label: 'Transactions', icon: FileText, count: MOCK_RECENT_TRANSACTIONS.length },
-    { id: 'traceability', label: 'Traceability', icon: QrCode },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
+    { id: 'collectors', label: t('collectors'), icon: Users, count: MOCK_ADMIN_COLLECTORS.length },
+    { id: 'repair-shops', label: t('repairShops'), icon: Store, count: MOCK_ADMIN_REPAIR_SHOPS.length },
+    { id: 'recyclers', label: t('recyclers'), icon: Recycle, count: MOCK_ADMIN_RECYCLERS.length },
+    { id: 'materials', label: t('materials'), icon: Layers, count: materials.length },
+    { id: 'prices', label: t('prices'), icon: DollarSign },
+    { id: 'lots', label: t('lots'), icon: Package, count: MOCK_ADMIN_LOTS.length },
+    { id: 'transactions', label: t('transactions'), icon: FileText, count: MOCK_RECENT_TRANSACTIONS.length },
+    { id: 'traceability', label: t('traceability'), icon: QrCode },
+    { id: 'analytics', label: t('analytics'), icon: BarChart3 },
+    { id: 'settings', label: t('settings'), icon: Settings },
   ];
 
   const handleUpdatePrice = (e) => {
@@ -215,7 +220,7 @@ export const AdminDashboard = () => {
           {/* LOWER-LEFT: Account Switcher section */}
           <div style={{ marginTop: 'auto', paddingTop: '1.25rem', borderTop: '1px solid #f1f5f9' }}>
             <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px', paddingLeft: '4px' }}>
-              Active Account
+              {t('currentAccount')}
             </div>
             <AccountSwitcher dropup={true} />
           </div>
@@ -957,6 +962,43 @@ export const AdminDashboard = () => {
                     <Badge variant="success">CPCB API Interface Ready</Badge>
                     <span style={{ fontSize: '0.78rem', color: '#475569' }}>Auth Protocol: SIH26229 Demo Portal</span>
                   </div>
+                </Card>
+
+                {/* Session & Logout Control Card */}
+                <Card style={{ padding: '1.25rem', border: '1px solid #fecaca', background: '#fff5f5' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '4px', color: '#b91c1c' }}>
+                    Session & Account Control
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: '#7f1d1d', marginBottom: '0.85rem' }}>
+                    Sign out of the Administrator governance dashboard and return to the login screen.
+                  </p>
+                  <button
+                    id="admin-logout-button"
+                    type="button"
+                    onClick={() => {
+                      logout();
+                      navigate('/login');
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '0.65rem 1.25rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: '#dc2626',
+                      color: '#ffffff',
+                      fontSize: '0.88rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#b91c1c')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#dc2626')}
+                  >
+                    <LogOut size={16} />
+                    <span>{t('logout')}</span>
+                  </button>
                 </Card>
               </div>
             </div>

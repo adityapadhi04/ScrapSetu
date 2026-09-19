@@ -19,7 +19,8 @@ import {
   Phone,
   ShieldCheck,
   User,
-  ShoppingBag
+  ShoppingBag,
+  LogOut
 } from 'lucide-react';
 import PageContainer from '../../components/common/PageContainer';
 import Card from '../../components/common/Card';
@@ -28,6 +29,8 @@ import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Modal from '../../components/common/Modal';
 import AccountSwitcher from '../../components/common/AccountSwitcher';
+import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { EmptyState, StatusIndicator } from '../../components/common/FeedbackStates';
 import { 
   MOCK_REPAIR_SHOP_DATA,
@@ -42,14 +45,15 @@ import {
  * Reusable Repair Shop Navigation Bar
  */
 export const RepairShopNavBar = () => {
+  const { t } = useLanguage();
   const navItems = [
-    { label: '🏠 Dashboard', path: '/repair-shop', end: true },
-    { label: '🔧 Available Components', path: '/repair-shop/components' },
-    { label: '⭐ What I Need', path: '/repair-shop/wanted' },
-    { label: '💰 My Offers', path: '/repair-shop/offers' },
-    { label: '📦 Purchases', path: '/repair-shop/purchases' },
-    { label: '📄 Transactions', path: '/repair-shop/transactions' },
-    { label: '👤 Profile', path: '/repair-shop/profile' },
+    { label: `🏠 ${t('dashboard')}`, path: '/repair-shop', end: true },
+    { label: `🔧 ${t('components')}`, path: '/repair-shop/components' },
+    { label: `⭐ ${t('wantedItems')}`, path: '/repair-shop/wanted' },
+    { label: `💰 ${t('offers')}`, path: '/repair-shop/offers' },
+    { label: `📦 ${t('purchases')}`, path: '/repair-shop/purchases' },
+    { label: `📄 ${t('transactions')}`, path: '/repair-shop/transactions' },
+    { label: `👤 ${t('profile')}`, path: '/repair-shop/profile' },
   ];
 
   return (
@@ -88,6 +92,7 @@ export const RepairShopNavBar = () => {
  */
 export const RepairShopComponentsPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [components] = useState(MOCK_REPAIR_SHOP_COMPONENTS);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedComponent, setSelectedComponent] = useState(null);
@@ -115,7 +120,7 @@ export const RepairShopComponentsPage = () => {
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>🔧 Available Salvage Components</h1>
+              <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>🔧 {t('components')}</h1>
               <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
                 Reusable e-waste parts salvaged by local collectors before scrap shredding
               </p>
@@ -219,6 +224,14 @@ export const RepairShopComponentsPage = () => {
             </form>
           )}
         </Modal>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
     </div>
   );
@@ -229,6 +242,7 @@ export const RepairShopComponentsPage = () => {
  */
 export const RepairShopWantedPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [wantedItems, setWantedItems] = useState(MOCK_REPAIR_SHOP_WANTED);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -242,8 +256,8 @@ export const RepairShopWantedPage = () => {
       id: `WANT-0${wantedItems.length + 1}`,
       name: newTitle,
       category: newCategory || newTitle,
-      conditionNeeded: 'Salvageable / Testable',
-      offeringPrice: newPrice || '₹500 / unit',
+      conditionNeeded: 'Tested / Working',
+      offeringPrice: newPrice || 'Market Rate',
       matchesFound: 1,
       urgency: 'Active Demand'
     };
@@ -263,7 +277,7 @@ export const RepairShopWantedPage = () => {
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>⭐ What I Need (पार्ट्स की मांग)</h1>
+              <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>⭐ {t('wantedItems')}</h1>
               <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
                 Broadcast required components so local collectors can salvage them before selling as scrap
               </p>
@@ -369,6 +383,7 @@ export const RepairShopWantedPage = () => {
  */
 export const RepairShopOffersPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [offers] = useState(MOCK_REPAIR_SHOP_OFFERS);
 
   return (
@@ -379,7 +394,7 @@ export const RepairShopOffersPage = () => {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>💰 My Offers & Price Proposals</h1>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>💰 {t('offers')}</h1>
             <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
               Track component bids submitted to local scrap collectors
             </p>
@@ -431,6 +446,14 @@ export const RepairShopOffersPage = () => {
             </Card>
           ))}
         </div>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
     </div>
   );
@@ -441,6 +464,7 @@ export const RepairShopOffersPage = () => {
  */
 export const RepairShopPurchasesPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [purchases] = useState(MOCK_REPAIR_SHOP_PURCHASES);
 
   return (
@@ -451,7 +475,7 @@ export const RepairShopPurchasesPage = () => {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>📦 Component Purchases & Salvage Yield</h1>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>📦 {t('purchases')}</h1>
             <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
               Completed acquisitions from informal collectors verified for repair reuse
             </p>
@@ -488,6 +512,14 @@ export const RepairShopPurchasesPage = () => {
             </Card>
           ))}
         </div>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
+        </div>
       </PageContainer>
     </div>
   );
@@ -498,6 +530,7 @@ export const RepairShopPurchasesPage = () => {
  */
 export const RepairShopTransactionsPage = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [txns] = useState(MOCK_COLLECTOR_TRANSACTIONS);
 
   return (
@@ -508,7 +541,7 @@ export const RepairShopTransactionsPage = () => {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>📄 Financial Ledger & Payout Receipts</h1>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>📄 {t('transactions')}</h1>
             <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
               Compliant transaction history recorded on ScrapSetu digital ledger
             </p>
@@ -518,32 +551,41 @@ export const RepairShopTransactionsPage = () => {
         <RepairShopNavBar />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-          {txns.map((t) => (
-            <Card key={t.id} style={{ padding: '1.15rem' }}>
+          {txns.map((tItem) => (
+            <Card key={tItem.id} style={{ padding: '1.15rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                      {t.id}
+                      {tItem.id}
                     </span>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t.material}</h3>
-                    <Badge variant={t.statusType === 'completed' ? 'success' : 'warning'}>
-                      {t.statusBadge}
+                    <Badge variant={tItem.statusType === 'completed' ? 'success' : 'warning'}>
+                      {tItem.statusBadge}
                     </Badge>
                   </div>
-                  <p style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '4px' }}>
-                    Party: <strong>{t.buyerName}</strong> • Weight: {t.weight} • Mode: {t.paymentMode}
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '4px' }}>
+                    {tItem.material}
+                  </h3>
+                  <p style={{ fontSize: '0.85rem', color: '#475569' }}>
+                    Weight: <strong>{tItem.weight}</strong> • Buyer: <strong>{tItem.buyerName}</strong>
                   </p>
                 </div>
 
                 <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Total Payout</span>
-                  <strong style={{ fontSize: '1.25rem', color: '#0f172a' }}>{t.amount}</strong>
-                  <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block' }}>{t.date}</span>
+                  <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#15803d' }}>{tItem.amount}</span>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>{tItem.date}</span>
                 </div>
               </div>
             </Card>
           ))}
+        </div>
+
+        {/* LOWER-LEFT: Account Switcher */}
+        <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+            {t('currentAccount')}
+          </div>
+          <AccountSwitcher dropup={true} />
         </div>
       </PageContainer>
     </div>
@@ -555,6 +597,8 @@ export const RepairShopTransactionsPage = () => {
  */
 export const RepairShopProfilePage = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const { t } = useLanguage();
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '3rem' }}>
@@ -564,7 +608,7 @@ export const RepairShopProfilePage = () => {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>👤 Repair Shop Profile</h1>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>👤 {t('profile')}</h1>
             <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
               Business credentials & verified trade registration
             </p>
@@ -621,15 +665,47 @@ export const RepairShopProfilePage = () => {
         </Card>
 
         {/* Switch Account Section */}
-        <Card style={{ padding: '1.25rem' }}>
+        <Card style={{ padding: '1.25rem', marginBottom: '1.5rem' }}>
           <h3 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '0.35rem' }}>
-            🔄 Switch Account
+            🔄 {t('switchAccount')}
           </h3>
           <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '0.85rem' }}>
             Switch to a different portal account on this device.
           </p>
           <AccountSwitcher dropup={false} />
         </Card>
+
+        {/* Logout Section */}
+        <div style={{ marginBottom: '2.5rem' }}>
+          <button
+            id="repair-logout-button"
+            type="button"
+            onClick={() => {
+              logout();
+              navigate('/login');
+            }}
+            style={{
+              width: '100%',
+              maxWidth: '300px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '0.85rem',
+              borderRadius: '10px',
+              border: '1px solid #fecaca',
+              background: '#fef2f2',
+              color: '#dc2626',
+              fontSize: '0.92rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <LogOut size={18} />
+            <span>{t('logout')}</span>
+          </button>
+        </div>
       </PageContainer>
     </div>
   );
