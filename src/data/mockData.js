@@ -1,5 +1,5 @@
 /**
- * ScrapSetu Mock Datasets for Module 0 (SIH 2026 Prototype)
+ * ScrapSetu Mock Datasets for Module 1 (SIH 2026 Prototype)
  * Clearly labeled demo data ready to be swapped with FastAPI endpoints in later modules.
  */
 
@@ -94,138 +94,572 @@ export const CORE_MATERIAL_GROUPS = [
   }
 ];
 
+export const MOCK_COLLECTOR_DATA = {
+  id: 'SS-COL-8921',
+  name: 'Ramesh Kumar',
+  phone: '+91 98765 43210',
+  operatingArea: 'Dharavi Sector 3, Mumbai',
+  todaysEarnings: '₹1,850',
+  thisMonthTotal: '₹18,450',
+  completedEarnings: '₹16,900',
+  pendingEarnings: '₹1,550',
+  recentEarningsBreakdown: [
+    { material: 'PCB / Motherboard', amount: '₹1,800', weight: '2.4 kg', date: 'Today' },
+    { material: 'Copper Wire', amount: '₹1,200', weight: '2.6 kg', date: 'Yesterday' },
+    { material: 'Motor & Pump', amount: '₹900', weight: '8.0 kg', date: '17 Sep 2026' }
+  ]
+};
+
 export const MOCK_COLLECTOR_LOTS = [
   {
-    id: 'LOT-2026-081',
-    material: 'Computer PCBs & RAM sticks',
-    estimatedWeight: '6.5 kg',
-    fairPriceEstimate: '₹2,100 - ₹2,450',
+    id: 'SS-2026-001',
+    material: 'Laptop PCB / Motherboard',
+    estimatedWeight: '2.4 kg',
+    fairPriceEstimate: '₹1,550 – ₹1,800',
     status: 'Ready for Handover',
-    date: '18 Sep 2026',
-    matchedBuyer: 'EcoGreen Recyclers (1.8 km)'
+    statusTag: 'COMPLETED ✓',
+    matchedBuyer: 'Om Electronics (Repair Shop • 2.8 km)',
+    date: '19 Sep 2026',
+    buyerOffer: '₹1,800'
   },
   {
-    id: 'LOT-2026-082',
+    id: 'SS-2026-002',
     material: 'Copper Wiring (Stripped)',
-    estimatedWeight: '4.2 kg',
-    fairPriceEstimate: '₹1,900 - ₹2,200',
+    estimatedWeight: '5.0 kg',
+    fairPriceEstimate: '₹2,200 – ₹2,500',
     status: 'Offer Received',
+    statusTag: 'PENDING ⏳',
+    matchedBuyer: 'ABC Recycling (Recycler • 5.2 km)',
     date: '19 Sep 2026',
-    matchedBuyer: 'Om Electronics (2.4 km)'
+    buyerOffer: '₹2,200'
   }
 ];
 
 export const MOCK_COLLECTOR_TRANSACTIONS = [
   {
-    id: 'TXN-9842',
-    date: '17 Sep 2026',
-    buyer: 'EcoGreen E-Waste Recyclers',
-    buyerType: 'Authorized Recycler',
-    material: 'Motherboards & Laptop batteries',
-    weight: '12 kg',
-    amount: '₹3,450',
-    status: 'Completed (Paid via UPI)'
+    id: 'SS-2026-001',
+    statusBadge: 'COMPLETED ✓',
+    statusType: 'completed',
+    material: 'Laptop PCB',
+    weight: '2.4 kg',
+    amount: '₹1,800',
+    buyerType: 'Repair Shop',
+    buyerName: 'Om Electronics & Laptop Care',
+    date: '19 Sept 2026',
+    paymentMode: 'UPI Instant Payout'
   },
   {
-    id: 'TXN-9810',
-    date: '14 Sep 2026',
-    buyer: 'Om Electronics & Laptop Care',
-    buyerType: 'Repair Shop',
-    material: '2x 15.6" Laptop Displays',
-    weight: '2 units',
-    amount: '₹900',
-    status: 'Completed (Cash on Handover)'
+    id: 'SS-2026-002',
+    statusBadge: 'PENDING ⏳',
+    statusType: 'pending',
+    material: 'Copper Cable',
+    weight: '5 kg',
+    amount: '₹2,200',
+    buyerType: 'Recycler',
+    buyerName: 'ABC Recycling',
+    date: '19 Sept 2026',
+    paymentMode: 'Cash on Handover'
   }
 ];
 
 export const MOCK_NEARBY_BUYERS = [
   {
     id: 'BUY-01',
-    name: 'EcoGreen E-Waste Recyclers',
-    type: 'Authorized Recycler',
-    distance: '1.8 km away',
-    cpcbVerified: true,
-    pickupAvailable: true,
-    rating: 4.9,
-    address: 'Plot 42, Industrial Area, Dharavi'
+    name: 'Om Electronics & Laptop Care',
+    type: 'Repair Shop',
+    typeIcon: '🔧',
+    distance: '2.8 km away',
+    distanceNum: 2.8,
+    specialty: 'Parts Recovery & Reusable PCBs',
+    address: 'Shop 12, Lamington Road, Mumbai',
+    rating: 4.8,
+    badgeText: 'Parts Buyer'
   },
   {
     id: 'BUY-02',
-    name: 'Om Electronics & Repair Hub',
-    type: 'Repair Shop',
-    distance: '2.4 km away',
-    cpcbVerified: false,
-    tradeLicensed: true,
-    pickupAvailable: false,
-    rating: 4.7,
-    address: 'Shop 12, Station Road'
+    name: 'ABC Recycling (Authorized)',
+    type: 'Recycler',
+    typeIcon: '♻️',
+    distance: '5.2 km away',
+    distanceNum: 5.2,
+    specialty: 'Bulk High-Grade Recycling',
+    address: 'MIDC Industrial Zone, Navi Mumbai',
+    rating: 4.9,
+    badgeText: 'Authorized Recycler'
   }
 ];
 
+export const MOCK_RECYCLER_DATA = {
+  name: 'ABC Recycling',
+  cpcbRegNo: 'CPCB/EW/MH/2024/0981',
+  authorizationStatus: 'Authorized Recycler',
+  authorizationNotice: 'DEMO DATA ONLY • Facility Authorization Record',
+  newLotsCount: 12,
+  pickupRequestsCount: 5,
+  todaysPurchases: '₹24,500',
+  totalRecycledWeight: '2,480 kg'
+};
+
 export const MOCK_RECYCLER_LOTS = [
   {
-    id: 'LOT-2026-081',
-    collectorName: 'Ramesh K.',
-    collectorRating: 4.8,
-    distance: '1.8 km',
-    material: 'Computer Motherboards & RAM',
-    weight: '6.5 kg',
-    offeredRate: '₹340 / kg',
-    totalValue: '₹2,210',
-    pickupRequired: true,
-    status: 'Pending Acceptance'
+    id: 'SS-2026-001',
+    material: 'Laptop PCB',
+    approxWeight: '2.4 kg',
+    distance: '5.2 km',
+    collectorLocation: 'Demo Location (Dharavi Cluster)',
+    estimatedRange: '₹1,550 – ₹1,800',
+    highestOffer: '₹1,750',
+    status: 'Available'
   },
   {
-    id: 'LOT-2026-079',
-    collectorName: 'Anil S.',
-    collectorRating: 4.6,
-    distance: '3.1 km',
-    material: 'Telecom Copper Wires',
-    weight: '11.0 kg',
-    offeredRate: '₹480 / kg',
-    totalValue: '₹5,280',
-    pickupRequired: true,
-    status: 'Pickup Scheduled'
+    id: 'SS-2026-002',
+    material: 'Copper Cable (Telecom grade)',
+    approxWeight: '5.0 kg',
+    distance: '5.2 km',
+    collectorLocation: 'Demo Location (Kurla West)',
+    estimatedRange: '₹2,200 – ₹2,500',
+    highestOffer: '₹2,300',
+    status: 'Available'
+  },
+  {
+    id: 'SS-2026-003',
+    material: 'Electric Motors (Mixer & Fan)',
+    approxWeight: '12.0 kg',
+    distance: '6.8 km',
+    collectorLocation: 'Demo Location (Sion East)',
+    estimatedRange: '₹1,200 – ₹1,600',
+    highestOffer: '₹1,400',
+    status: 'Available'
   }
 ];
+
+export const MOCK_RECYCLER_PICKUPS = [
+  {
+    lotId: 'SS-2026-001',
+    material: 'PCB (Laptop Motherboards)',
+    approxWeight: '2.4 kg',
+    pickupArea: 'Dharavi Sector 3, Mumbai',
+    status: 'Requested',
+    statusBadge: '⏳ Pickup: Requested',
+    driver: 'Dispatched (Tata Ace MH-04-AB-2910)'
+  },
+  {
+    lotId: 'SS-2026-004',
+    material: 'Telecom Copper Wires',
+    approxWeight: '18.5 kg',
+    pickupArea: 'Bandra Aggregation Yard',
+    status: 'Scheduled',
+    statusBadge: '📅 Scheduled for 3:00 PM',
+    driver: 'Assigned: Surendra P.'
+  }
+];
+
+export const MOCK_REPAIR_SHOP_DATA = {
+  shopName: 'Om Electronics & Laptop Care',
+  owner: 'Mahesh Sharma',
+  location: 'Lamington Road, Mumbai',
+  matchingItemsCount: 8,
+  activeWantedItemsCount: 4,
+  pendingOffersCount: 2,
+  salvageSavings: '₹14,200'
+};
 
 export const MOCK_REPAIR_SHOP_WANTED = [
   {
     id: 'WANT-01',
-    category: 'Laptop Motherboards (Core i3/i5 8th-11th Gen)',
-    conditionNeeded: 'Repairable / Working Chips',
-    offeringPrice: '₹500 - ₹1,200 / board',
-    status: 'Active Demand',
-    matchCount: 3
+    name: 'Laptop RAM',
+    category: 'DDR4 8GB / 16GB Laptop RAM sticks',
+    conditionNeeded: 'Intact gold fingers / tested chip',
+    offeringPrice: '₹400 – ₹800 / stick',
+    matchesFound: 3,
+    urgency: 'High Demand'
   },
   {
     id: 'WANT-02',
+    name: 'Display Panels',
     category: '14" & 15.6" Slim LED Screens (30-pin)',
     conditionNeeded: 'No cracks / Functional display',
-    offeringPrice: '₹400 - ₹800 / piece',
-    status: 'Urgent',
-    matchCount: 1
+    offeringPrice: '₹500 – ₹900 / piece',
+    matchesFound: 2,
+    urgency: 'Urgent'
   },
   {
     id: 'WANT-03',
-    category: 'Inverter Transformer Coils',
-    conditionNeeded: 'Intact copper winding',
+    name: 'SMPS Power Supply',
+    category: 'Desktop 450W - 650W Power Supplies',
+    conditionNeeded: 'Working fan & clean capacitors',
+    offeringPrice: '₹250 – ₹450 / unit',
+    matchesFound: 1,
+    urgency: 'Medium Demand'
+  },
+  {
+    id: 'WANT-04',
+    name: 'Motor',
+    category: 'Copper Core Electric Motors (Washing Machine / Mixer)',
+    conditionNeeded: 'Intact copper winding (no burnt smell)',
     offeringPrice: '₹120 / kg',
-    status: 'Active Demand',
-    matchCount: 4
+    matchesFound: 2,
+    urgency: 'Medium Demand'
+  },
+  {
+    id: 'WANT-05',
+    name: 'Mobile Components',
+    category: 'AMOLED / IPS Screens & Charging Daughterboards',
+    conditionNeeded: 'Uncracked glass or reusable flex ribbon',
+    offeringPrice: '₹200 – ₹600 / unit',
+    matchesFound: 4,
+    urgency: 'High Demand'
+  }
+];
+
+export const MOCK_REPAIR_SHOP_COMPONENTS = [
+  {
+    id: 'CMP-101',
+    name: '15.6" Slim LED Panel (30-Pin)',
+    collector: 'Ramesh Kumar',
+    collectorPhone: '+91 98765 43210',
+    location: 'Dharavi Sector 3 (2.1 km away)',
+    condition: 'Uncracked, tested salvage',
+    estimatedPrice: '₹450 / piece',
+    availableQty: 2,
+    dateAdded: '19 Sep 2026',
+    status: 'Available'
+  },
+  {
+    id: 'CMP-102',
+    name: 'Dell Inspiron 15 Motherboard (i5 8th Gen)',
+    collector: 'Anil Sakpal',
+    collectorPhone: '+91 98111 22334',
+    location: 'Kurla West (3.4 km away)',
+    condition: 'Complete board, minor charging IC issue',
+    estimatedPrice: '₹1,200',
+    availableQty: 1,
+    dateAdded: '19 Sep 2026',
+    status: 'Available'
+  },
+  {
+    id: 'CMP-103',
+    name: 'Desktop SMPS Power Supply (450W Bronze)',
+    collector: 'Sunil Verma',
+    collectorPhone: '+91 98222 33445',
+    location: 'Sion East (4.0 km away)',
+    condition: 'Working fan, all 12V rails intact',
+    estimatedPrice: '₹350',
+    availableQty: 3,
+    dateAdded: '18 Sep 2026',
+    status: 'Available'
+  },
+  {
+    id: 'CMP-104',
+    name: 'Washing Machine Copper Rotor Motor',
+    collector: 'Deepak Shinde',
+    collectorPhone: '+91 98333 44556',
+    location: 'Bandra Aggregation Yard (4.8 km away)',
+    condition: 'Solid winding, tested bearings',
+    estimatedPrice: '₹480',
+    availableQty: 2,
+    dateAdded: '18 Sep 2026',
+    status: 'Available'
+  }
+];
+
+export const MOCK_REPAIR_SHOP_OFFERS = [
+  {
+    id: 'OFF-301',
+    componentName: 'Laptop PCB / Motherboard (Lot SS-2026-001)',
+    collector: 'Ramesh Kumar',
+    offeredAmount: '₹1,800',
+    benchmarkRate: '₹1,550 – ₹1,800',
+    status: 'Accepted ✓',
+    statusType: 'accepted',
+    date: '19 Sep 2026, 11:15 AM'
+  },
+  {
+    id: 'OFF-302',
+    componentName: '14" IPS Matte Screen Panel',
+    collector: 'Sunil Verma',
+    offeredAmount: '₹650',
+    benchmarkRate: '₹500 – ₹750',
+    status: 'Pending ⏳',
+    statusType: 'pending',
+    date: '19 Sep 2026, 09:30 AM'
+  },
+  {
+    id: 'OFF-303',
+    componentName: '3x 8GB DDR4 Laptop RAM',
+    collector: 'Deepak Shinde',
+    offeredAmount: '₹1,500',
+    benchmarkRate: '₹1,200 – ₹1,800',
+    status: 'Under Counter-Offer',
+    statusType: 'pending',
+    date: '18 Sep 2026, 05:40 PM'
+  }
+];
+
+export const MOCK_REPAIR_SHOP_PURCHASES = [
+  {
+    id: 'PUR-801',
+    component: 'Laptop Motherboard (Core i3 Board)',
+    collector: 'Ramesh Kumar',
+    amount: '₹1,800',
+    date: '19 Sep 2026',
+    salvageYield: 'Chipset + 8x Capacitors + Audio IC',
+    status: 'Received ✓'
+  },
+  {
+    id: 'PUR-802',
+    component: '2x Inverter Copper Transformers',
+    collector: 'Anil Sakpal',
+    amount: '₹760',
+    date: '16 Sep 2026',
+    salvageYield: 'Rewound copper wire + Core',
+    status: 'Received ✓'
+  },
+  {
+    id: 'PUR-803',
+    component: '5x Smartphone Motherboards (Broken Screen)',
+    collector: 'Deepak Shinde',
+    amount: '₹1,250',
+    date: '14 Sep 2026',
+    salvageYield: 'Camera sensors + PMIC chips',
+    status: 'Received ✓'
   }
 ];
 
 export const MOCK_ADMIN_METRICS = {
-  totalCollectors: 142,
-  totalRepairShops: 38,
-  totalRecyclers: 16,
-  totalVolumeRecycledKg: '14,680 kg',
-  totalPayouts: '₹4,82,400',
-  activeLotsCount: 29,
-  pendingVerifications: 5,
-  eprCertificatesGenerated: 18
+  totalCollectors: '1,248',
+  totalRepairShops: '86',
+  totalRecyclers: '42',
+  totalTransactions: '5,842',
+  totalVolumeRecycledKg: '48,650 kg',
+  totalPayouts: '₹38.4 Lakhs',
+  notice: 'DEMO / MOCK VALUES FOR PROTOTYPE'
 };
+
+export const MOCK_ADMIN_COLLECTORS = [
+  {
+    id: 'COL-101',
+    name: 'Ramesh Kumar',
+    phone: '+91 98765 43210',
+    area: 'Dharavi Sector 3, Mumbai',
+    lotsSubmitted: 42,
+    rating: '4.8 ★',
+    payoutTotal: '₹48,200',
+    status: 'Active ✓',
+    verification: 'Aadhaar Verified'
+  },
+  {
+    id: 'COL-102',
+    name: 'Anil Sakpal',
+    phone: '+91 98111 22334',
+    area: 'Kurla West, Mumbai',
+    lotsSubmitted: 28,
+    rating: '4.7 ★',
+    payoutTotal: '₹31,450',
+    status: 'Active ✓',
+    verification: 'Aadhaar Verified'
+  },
+  {
+    id: 'COL-103',
+    name: 'Sunil Verma',
+    phone: '+91 98222 33445',
+    area: 'Sion East, Mumbai',
+    lotsSubmitted: 19,
+    rating: '4.9 ★',
+    payoutTotal: '₹22,800',
+    status: 'Active ✓',
+    verification: 'Aadhaar Verified'
+  },
+  {
+    id: 'COL-104',
+    name: 'Deepak Shinde',
+    phone: '+91 98333 44556',
+    area: 'Bandra Aggregation Yard',
+    lotsSubmitted: 35,
+    rating: '4.6 ★',
+    payoutTotal: '₹39,100',
+    status: 'Active ✓',
+    verification: 'Aadhaar Verified'
+  }
+];
+
+export const MOCK_ADMIN_REPAIR_SHOPS = [
+  {
+    id: 'REP-201',
+    shopName: 'Om Electronics & Laptop Care',
+    owner: 'Mahesh Sharma',
+    location: 'Lamington Road, Mumbai',
+    licenseNo: 'SE-84910/MUM',
+    activeWantedItems: 5,
+    salvagePurchases: 14,
+    status: 'Verified ✓'
+  },
+  {
+    id: 'REP-202',
+    shopName: 'MicroTech Mobile & Chip Fix',
+    owner: 'Nitin Patel',
+    location: 'Grant Road Station Market',
+    licenseNo: 'SE-88219/MUM',
+    activeWantedItems: 3,
+    salvagePurchases: 8,
+    status: 'Pending Verification ⏳'
+  },
+  {
+    id: 'REP-203',
+    shopName: 'SmartCare Appliance Solutions',
+    owner: 'K. Rajan',
+    location: 'Kurla Station Road',
+    licenseNo: 'SE-79102/MUM',
+    activeWantedItems: 2,
+    salvagePurchases: 19,
+    status: 'Verified ✓'
+  }
+];
+
+export const MOCK_ADMIN_RECYCLERS = [
+  {
+    id: 'RCY-301',
+    name: 'ABC Recycling Facility',
+    cpcbNumber: 'CPCB/EW/MH/2024/0981',
+    location: 'MIDC Industrial Zone, Navi Mumbai',
+    processingCapacity: '500 MT / month',
+    activePickups: 5,
+    status: 'Authorized ✓'
+  },
+  {
+    id: 'RCY-302',
+    name: 'Maharashtra E-Cycle Solutions',
+    cpcbNumber: 'CPCB/EW/MH/2026/1109',
+    location: 'Taloja MIDC, Raigad',
+    processingCapacity: '350 MT / month',
+    activePickups: 2,
+    status: 'Pending Document Review ⏳'
+  },
+  {
+    id: 'RCY-303',
+    name: 'EcoGreen Precious Metals Refinery',
+    cpcbNumber: 'CPCB/EW/MH/2023/0412',
+    location: 'Bhiwandi Logistics Hub',
+    processingCapacity: '800 MT / month',
+    activePickups: 9,
+    status: 'Authorized ✓'
+  }
+];
+
+export const MOCK_ADMIN_LOTS = [
+  {
+    id: 'SS-2026-001',
+    material: 'Laptop PCB / Motherboard',
+    weight: '2.4 kg',
+    collector: 'Ramesh Kumar (Dharavi)',
+    buyer: 'Om Electronics (Repair Shop)',
+    benchmarkRange: '₹1,550 – ₹1,800',
+    finalAmount: '₹1,800',
+    status: 'Completed ✓'
+  },
+  {
+    id: 'SS-2026-002',
+    material: 'Copper Wiring (Telecom Grade)',
+    weight: '5.0 kg',
+    collector: 'Anil Sakpal (Kurla)',
+    buyer: 'ABC Recycling (Recycler)',
+    benchmarkRange: '₹2,200 – ₹2,500',
+    finalAmount: '₹2,200',
+    status: 'Pending Handover ⏳'
+  },
+  {
+    id: 'SS-2026-003',
+    material: 'Electric Motors (Mixer & Fan)',
+    weight: '12.0 kg',
+    collector: 'Sunil Verma (Sion)',
+    buyer: 'Open for bidding',
+    benchmarkRange: '₹1,200 – ₹1,600',
+    finalAmount: '₹1,400 (Bid)',
+    status: 'Bidding Active'
+  },
+  {
+    id: 'SS-2026-004',
+    material: 'Li-ion Battery Packs (Laptop & UPS)',
+    weight: '8.5 kg',
+    collector: 'Deepak Shinde (Bandra)',
+    buyer: 'ABC Recycling (Recycler)',
+    benchmarkRange: '₹850 – ₹1,200',
+    finalAmount: '₹1,100',
+    status: 'Hazardous Escrow ⚠️'
+  }
+];
+
+export const MOCK_ADMIN_TRACEABILITY_LOGS = [
+  {
+    traceId: 'TRC-9901-MH',
+    lotId: 'SS-2026-001',
+    material: 'Laptop PCB',
+    weight: '2.4 kg',
+    originCollector: 'Ramesh Kumar (Dharavi)',
+    destinationFacility: 'Om Electronics (Repair Shop, Lamington Rd)',
+    qrHash: 'sha256:8f92a1c0...93e1',
+    eprCreditGenerated: 'EPR-CR-2026-0081',
+    complianceStatus: 'Verified & Logged ✓',
+    timestamp: '19 Sep 2026, 11:30 AM'
+  },
+  {
+    traceId: 'TRC-9902-MH',
+    lotId: 'SS-2026-002',
+    material: 'Copper Wires (Stripped)',
+    weight: '5.0 kg',
+    originCollector: 'Anil Sakpal (Kurla)',
+    destinationFacility: 'ABC Recycling (Navi Mumbai MIDC)',
+    qrHash: 'sha256:7b14d2e8...42f7',
+    eprCreditGenerated: 'EPR-CR-2026-0082',
+    complianceStatus: 'Pickup Dispatched ⏳',
+    timestamp: '19 Sep 2026, 10:15 AM'
+  },
+  {
+    traceId: 'TRC-9899-MH',
+    lotId: 'SS-2026-000',
+    material: 'Lead-Acid Inverter Battery',
+    weight: '24.0 kg',
+    originCollector: 'Sunil Verma (Sion)',
+    destinationFacility: 'ABC Recycling (Navi Mumbai MIDC)',
+    qrHash: 'sha256:5e32c890...11a3',
+    eprCreditGenerated: 'EPR-CR-2026-0079',
+    complianceStatus: 'Hazardous Disposal Certified ✓',
+    timestamp: '18 Sep 2026, 04:45 PM'
+  }
+];
+
+export const MOCK_RECENT_TRANSACTIONS = [
+  {
+    id: 'TXN-5842',
+    lotId: 'SS-2026-001',
+    collector: 'Ramesh Kumar (Collector)',
+    buyer: 'Om Electronics (Repair Shop)',
+    material: 'Laptop PCB (2.4 kg)',
+    amount: '₹1,800',
+    status: 'Completed ✓',
+    timestamp: '19 Sep 2026, 11:30 AM'
+  },
+  {
+    id: 'TXN-5841',
+    lotId: 'SS-2026-002',
+    collector: 'Anil Sakpal (Collector)',
+    buyer: 'ABC Recycling (Recycler)',
+    material: 'Copper Wires (5.0 kg)',
+    amount: '₹2,200',
+    status: 'Pending ⏳',
+    timestamp: '19 Sep 2026, 10:15 AM'
+  },
+  {
+    id: 'TXN-5840',
+    lotId: 'SS-2026-000',
+    collector: 'Sunil Verma (Collector)',
+    buyer: 'ABC Recycling (Recycler)',
+    material: 'Inverter Batteries (24 kg)',
+    amount: '₹3,600',
+    status: 'Completed ✓',
+    timestamp: '18 Sep 2026, 04:45 PM'
+  }
+];
 
 export const MOCK_VERIFICATION_QUEUE = [
   {
@@ -245,3 +679,4 @@ export const MOCK_VERIFICATION_QUEUE = [
     status: 'Awaiting Physical Verification'
   }
 ];
+

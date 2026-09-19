@@ -9,11 +9,13 @@ import {
   MapPin, 
   ChevronRight, 
   CheckCircle2, 
-  TrendingUp, 
-  AlertTriangle,
-  Volume2
+  Bell,
+  Sparkles,
+  TrendingUp,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { getStrings } from '../../locales/strings';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
@@ -22,100 +24,136 @@ import MobileBottomNav from '../../components/common/MobileBottomNav';
 import Modal from '../../components/common/Modal';
 import { 
   CORE_MATERIAL_GROUPS, 
-  MOCK_COLLECTOR_LOTS, 
+  MOCK_COLLECTOR_DATA, 
   MOCK_NEARBY_BUYERS 
 } from '../../data/mockData';
 
 export const CollectorDashboard = () => {
   const navigate = useNavigate();
-  const { currentUser, language, isAudioActive } = useAuth();
-  const [activeModal, setActiveModal] = useState(null); // 'prices', 'safety', 'sell-mock'
+  const { language } = useAuth();
+  const t = getStrings(language);
 
-  // Vernacular greeting strings
-  const greetings = {
-    en: { welcome: 'Namaste', sub: 'Ready to sell e-waste today?' },
-    hi: { welcome: 'नमस्ते', sub: 'आज ई-कचरा बेचने के लिए तैयार?' },
-    mr: { welcome: 'नमस्कार', sub: 'आज ई-कचरा विकण्यासाठी तयार?' }
-  };
-
-  const currentGreeting = greetings[language] || greetings['en'];
+  const [activeModal, setActiveModal] = useState(null); // 'prices', 'safety', 'notifications'
+  const [selectedBuyer, setSelectedBuyer] = useState(null);
+  const [notificationCount, setNotificationCount] = useState(2);
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
       <PageContainer mobile>
-        {/* Collector Greeting & Area Header */}
+        {/* Simple Vernacular Greeting & Notification Icon */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>
-                {currentGreeting.welcome}, {currentUser?.name?.split(' ')[0] || 'Collector'}!
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0f172a' }}>
+                {t.greeting} 👋
               </h1>
-              <span style={{ fontSize: '1.3rem' }}>👋</span>
             </div>
-            <p style={{ fontSize: '0.85rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-              <MapPin size={14} color="#16a34a" />
-              {currentUser?.area || 'Dharavi Sector 3, Mumbai'}
+            <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px' }}>
+              {t.welcomeBack}
             </p>
           </div>
 
-          <Badge variant="success">
-            <CheckCircle2 size={12} />
-            Verified
-          </Badge>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={() => setActiveModal('notifications')}
+              className="btn btn-outline"
+              style={{
+                padding: '8px',
+                minHeight: '40px',
+                width: '40px',
+                borderRadius: '50%',
+                position: 'relative'
+              }}
+              aria-label="Notifications"
+            >
+              <Bell size={18} color="#0f172a" />
+              {notificationCount > 0 && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '-2px',
+                    right: '-2px',
+                    background: '#dc2626',
+                    color: 'white',
+                    fontSize: '0.65rem',
+                    fontWeight: 800,
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  {notificationCount}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* PRIMARY ACTION: High-contrast large touch target "Sell Scrap" */}
+        {/* PRIMARY ACTION: Large Prominent "SELL SCRAP" Hero Button */}
         <div style={{ marginBottom: '1.5rem' }}>
           <button
-            id="collector-primary-sell-btn"
+            id="collector-primary-sell-scrap-btn"
             onClick={() => navigate('/collector/sell')}
             className="btn-collector-camera"
-            aria-label="Sell Scrap by Photographing"
+            aria-label="Sell Scrap"
+            style={{
+              flexDirection: 'column',
+              padding: '1.25rem 1rem',
+              gap: '6px',
+              minHeight: '84px',
+              cursor: 'pointer'
+            }}
           >
-            <Camera size={32} strokeWidth={2.5} />
-            <span>📷 Sell Scrap</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Camera size={34} strokeWidth={2.5} />
+              <span style={{ fontSize: '1.45rem', fontWeight: 800, letterSpacing: '0.02em' }}>
+                📷 {t.sellScrap}
+              </span>
+            </div>
+            <span style={{ fontSize: '0.82rem', fontWeight: 500, color: '#dcfce7', opacity: 0.95 }}>
+              {t.sellScrapSubtitle}
+            </span>
           </button>
-          <p style={{ textAlign: 'center', fontSize: '0.78rem', color: '#166534', fontWeight: 700, marginTop: '6px' }}>
-            फोटो खींचो • सही कीमत जानो • तुरंत बेचो (Photo & Instant Fair Price)
-          </p>
         </div>
 
-        {/* Today's Earnings Card */}
+        {/* QUICK INFORMATION: Today's Earnings */}
         <div style={{ marginBottom: '1.5rem' }}>
           <div className="card-hero-earnings">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Today's Earnings / आज की कमाई
+                {t.todaysEarnings} / आज की कमाई
               </span>
               <TrendingUp size={18} color="#22c55e" />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '0.75rem' }}>
-              <span style={{ fontSize: '2.4rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.03em' }}>
-                ₹1,420
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '2.5rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em' }}>
+                {MOCK_COLLECTOR_DATA.todaysEarnings}
               </span>
-              <span style={{ fontSize: '0.85rem', color: '#86efac', fontWeight: 600 }}>
-                +₹640 from yesterday
+              <span style={{ fontSize: '0.82rem', color: '#86efac', fontWeight: 600 }}>
+                ✓ Paid directly to UPI / Cash
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '0.75rem', fontSize: '0.82rem' }}>
-              <div>
-                <span style={{ color: '#94a3b8', display: 'block' }}>2 Lots Completed</span>
-                <span style={{ fontWeight: 700 }}>10.7 kg Collected</span>
-              </div>
-              <div style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.1)', paddingLeft: '1rem' }}>
-                <span style={{ color: '#94a3b8', display: 'block' }}>Payment Mode</span>
-                <span style={{ fontWeight: 700, color: '#86efac' }}>UPI Direct & Cash</span>
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255, 255, 255, 0.12)', paddingTop: '0.65rem', fontSize: '0.8rem', color: '#cbd5e1' }}>
+              <span>Completed today: <strong>1 Lot (2.4 kg PCB)</strong></span>
+              <span
+                onClick={() => navigate('/collector/earnings')}
+                style={{ color: '#86efac', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                View Ledger →
+              </span>
             </div>
           </div>
         </div>
 
-        {/* 4 Quick Access Touch Cards (Grid) */}
+        {/* QUICK ACTIONS: 4 Big Touch Cards */}
         <div style={{ marginBottom: '1.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Quick Actions / मुख्य कार्य</h2>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t.quickActions} / मुख्य कार्य</h2>
             <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Touch to open</span>
           </div>
 
@@ -124,14 +162,14 @@ export const CollectorDashboard = () => {
             <Card
               interactive
               onClick={() => setActiveModal('prices')}
-              style={{ padding: '1rem', border: '1.5px solid #e2e8f0', background: '#ffffff' }}
+              style={{ padding: '1.1rem 1rem', background: '#ffffff', border: '1.5px solid #e2e8f0' }}
             >
-              <div style={{ fontSize: '1.75rem', marginBottom: '0.4rem' }}>💰</div>
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '2px' }}>
-                Price Board
+              <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>💰</div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '2px' }}>
+                {t.priceBoard}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                बाजार भाव (8 materials)
+                बाजार भाव (8 e-waste items)
               </p>
             </Card>
 
@@ -139,11 +177,11 @@ export const CollectorDashboard = () => {
             <Card
               interactive
               onClick={() => navigate('/collector/lots')}
-              style={{ padding: '1rem', border: '1.5px solid #e2e8f0', background: '#ffffff' }}
+              style={{ padding: '1.1rem 1rem', background: '#ffffff', border: '1.5px solid #e2e8f0' }}
             >
-              <div style={{ fontSize: '1.75rem', marginBottom: '0.4rem' }}>📦</div>
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '2px' }}>
-                My Lots
+              <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>📦</div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '2px' }}>
+                {t.myLots}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
                 2 एक्टिव लॉट (Ready)
@@ -154,26 +192,26 @@ export const CollectorDashboard = () => {
             <Card
               interactive
               onClick={() => navigate('/collector/transactions')}
-              style={{ padding: '1rem', border: '1.5px solid #e2e8f0', background: '#ffffff' }}
+              style={{ padding: '1.1rem 1rem', background: '#ffffff', border: '1.5px solid #e2e8f0' }}
             >
-              <div style={{ fontSize: '1.75rem', marginBottom: '0.4rem' }}>📄</div>
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, marginBottom: '2px' }}>
-                Receipts
+              <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>📄</div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '2px' }}>
+                {t.transactions}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                लेनदेन पर्ची व कमाई
+                पर्ची व भुगतान रिकॉर्ड
               </p>
             </Card>
 
-            {/* 4. Safety Tips */}
+            {/* 4. Safety */}
             <Card
               interactive
               onClick={() => setActiveModal('safety')}
-              style={{ padding: '1rem', border: '1.5px solid #fecaca', background: '#fffafb' }}
+              style={{ padding: '1.1rem 1rem', background: '#fffafb', border: '1.5px solid #fecaca' }}
             >
-              <div style={{ fontSize: '1.75rem', marginBottom: '0.4rem' }}>🛡️</div>
-              <h3 style={{ fontSize: '0.98rem', fontWeight: 700, color: '#dc2626', marginBottom: '2px' }}>
-                Safety Guide
+              <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>🛡️</div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#dc2626', marginBottom: '2px' }}>
+                {t.safety}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#991b1b' }}>
                 सुरक्षा नियम (बैटरी/कांच)
@@ -182,40 +220,40 @@ export const CollectorDashboard = () => {
           </div>
         </div>
 
-        {/* Nearby Verified Buyers Preview */}
+        {/* NEARBY BUYERS PREVIEW */}
         <div style={{ marginBottom: '1.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-            <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>Nearby Buyers / पास के खरीदार</h2>
-            <span style={{ fontSize: '0.8rem', color: '#15803d', fontWeight: 600 }}>2 Available</span>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{t.nearbyBuyers} / पास के खरीदार</h2>
+            <span style={{ fontSize: '0.78rem', color: '#15803d', fontWeight: 700 }}>2 Verified Nearby</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {MOCK_NEARBY_BUYERS.map((buyer) => (
-              <Card key={buyer.id} style={{ padding: '1rem' }}>
+              <Card
+                key={buyer.id}
+                interactive
+                onClick={() => setSelectedBuyer(buyer)}
+                style={{ padding: '1rem' }}
+              >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                      <h4 style={{ fontSize: '0.95rem', fontWeight: 700 }}>{buyer.name}</h4>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <span style={{ fontSize: '1.4rem' }}>{buyer.typeIcon}</span>
+                    <div>
+                      <h4 style={{ fontSize: '0.98rem', fontWeight: 700 }}>{buyer.name}</h4>
+                      <p style={{ fontSize: '0.8rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                        <MapPin size={12} color="#16a34a" />
+                        <strong>{buyer.distance}</strong> • {buyer.specialty}
+                      </p>
                     </div>
-                    <p style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <MapPin size={12} color="#16a34a" />
-                      {buyer.distance} • {buyer.address}
-                    </p>
                   </div>
-                  <Badge variant={buyer.cpcbVerified ? 'info' : 'warning'}>
-                    {buyer.cpcbVerified ? 'CPCB Verified' : 'Licensed'}
+
+                  <Badge variant={buyer.type === 'Recycler' ? 'info' : 'warning'}>
+                    {buyer.badgeText}
                   </Badge>
                 </div>
               </Card>
             ))}
           </div>
-        </div>
-
-        {/* Offline sync banner status placeholder */}
-        <div style={{ background: '#f0fdf4', border: '1px dashed #86efac', borderRadius: '12px', padding: '0.85rem', textAlign: 'center' }}>
-          <span style={{ fontSize: '0.8rem', color: '#166534', fontWeight: 600 }}>
-            📶 Offline Ready: Photographs and lot records save locally when offline and sync automatically.
-          </span>
         </div>
       </PageContainer>
 
@@ -226,8 +264,8 @@ export const CollectorDashboard = () => {
         title="💰 Today's E-Waste Price Board (बाजार भाव)"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
-            CPCB and market benchmark rates for informal scrap collectors:
+          <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
+            Fair benchmark prices governed by CPCB compliance rules to prevent informal scrap collectors from being underpaid:
           </p>
           {CORE_MATERIAL_GROUPS.map((item) => (
             <div
@@ -249,7 +287,7 @@ export const CollectorDashboard = () => {
                 </span>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', display: 'block' }}>
+                <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', display: 'block' }}>
                   {item.benchmarkPrice}
                 </span>
                 <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{item.unit}</span>
@@ -265,28 +303,83 @@ export const CollectorDashboard = () => {
         onClose={() => setActiveModal(null)}
         title="🛡️ E-Waste Safety Guide (सुरक्षा नियम)"
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           <div style={{ padding: '0.85rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px' }}>
             <h4 style={{ color: '#dc2626', fontSize: '0.95rem', fontWeight: 700, marginBottom: '4px' }}>
-              ⚠️ Battery Handling (बैटरी कभी न तोड़ें)
+              ⚠️ Never Burn Wires Openly (तार कभी न जलाएं)
             </h4>
             <p style={{ fontSize: '0.82rem', color: '#7f1d1d', lineHeight: 1.4 }}>
-              Do not puncture, burn, or open lithium mobile batteries. They can explode or cause severe chemical burns. Keep them dry.
+              Burning plastic coating produces toxic dioxins that permanently damage lungs. Authorized recyclers use mechanized stripping machines.
             </p>
           </div>
 
           <div style={{ padding: '0.85rem', background: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '10px' }}>
             <h4 style={{ color: '#b45309', fontSize: '0.95rem', fontWeight: 700, marginBottom: '4px' }}>
-              🧤 Wear Gloves for Broken Glass & PCBs
+              ⚠️ Do Not Puncture Batteries (बैटरी न तोड़ें)
             </h4>
             <p style={{ fontSize: '0.82rem', color: '#78350f', lineHeight: 1.4 }}>
-              Never burn wires openly for copper extraction. Burning plastics releases toxic dioxin fumes harmful to lungs. Hand over directly to authorized recyclers for mechanized stripping.
+              Lithium phone/laptop batteries ignite instantly if punctured. Store them in dry plastic buckets away from direct heat.
             </p>
           </div>
         </div>
       </Modal>
 
-      {/* Collector Bottom Navigation */}
+      {/* Modal: Notifications */}
+      <Modal
+        isOpen={activeModal === 'notifications'}
+        onClose={() => setActiveModal(null)}
+        title="🔔 Notifications"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div style={{ padding: '0.75rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px' }}>
+            <strong style={{ fontSize: '0.88rem', color: '#166534', display: 'block' }}>Payment Received: ₹1,800 ✓</strong>
+            <span style={{ fontSize: '0.78rem', color: '#475569' }}>Om Electronics paid for Lot SS-2026-001 (Laptop PCB).</span>
+          </div>
+
+          <div style={{ padding: '0.75rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px' }}>
+            <strong style={{ fontSize: '0.88rem', color: '#92400e', display: 'block' }}>New Offer from ABC Recycling</strong>
+            <span style={{ fontSize: '0.78rem', color: '#475569' }}>Offered ₹2,200 for your 5 kg Copper Cable lot.</span>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Nearby Buyer Details */}
+      <Modal
+        isOpen={!!selectedBuyer}
+        onClose={() => setSelectedBuyer(null)}
+        title={`${selectedBuyer?.typeIcon || '🤝'} ${selectedBuyer?.name}`}
+      >
+        {selectedBuyer && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <div style={{ padding: '0.85rem', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Entity Type & Accreditation</span>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '2px' }}>{selectedBuyer.type}</h4>
+              <p style={{ fontSize: '0.85rem', color: '#15803d', fontWeight: 600, marginTop: '4px' }}>
+                {selectedBuyer.badgeText} • Rating: {selectedBuyer.rating} ★
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: '#475569' }}>
+              <p><strong>Distance:</strong> {selectedBuyer.distance}</p>
+              <p><strong>Address:</strong> {selectedBuyer.address}</p>
+              <p><strong>Specialty:</strong> {selectedBuyer.specialty}</p>
+            </div>
+
+            <Button
+              variant="primary"
+              fullWidth
+              onClick={() => {
+                setSelectedBuyer(null);
+                navigate('/collector/sell');
+              }}
+            >
+              📷 Sell Scrap to this Buyer
+            </Button>
+          </div>
+        )}
+      </Modal>
+
+      {/* Mobile Bottom Navigation */}
       <MobileBottomNav role="COLLECTOR" />
     </div>
   );

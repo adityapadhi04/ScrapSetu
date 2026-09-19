@@ -10,7 +10,7 @@ export const ROLES = {
 export const ROLE_CONFIG = {
   COLLECTOR: {
     key: 'COLLECTOR',
-    label: 'Collector',
+    label: 'Informal Scrap Collector',
     vernacularLabel: 'कबाड़ीवाला / भंगारवाला',
     badgeVariant: 'success',
     path: '/collector',
@@ -53,7 +53,7 @@ export const ROLE_CONFIG = {
   },
   ADMIN: {
     key: 'ADMIN',
-    label: 'Platform Admin',
+    label: 'Administrator',
     vernacularLabel: 'प्रशासक',
     badgeVariant: 'neutral',
     path: '/admin',
@@ -79,6 +79,7 @@ export const AuthProvider = ({ children }) => {
   });
 
   const [isAudioActive, setIsAudioActive] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('scrapsetu_role', currentRole);
@@ -94,8 +95,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const switchAccount = switchRole;
+
   const toggleAudio = () => {
     setIsAudioActive((prev) => !prev);
+  };
+
+  const toggleOffline = () => {
+    setIsOffline((prev) => !prev);
   };
 
   const currentUser = ROLE_CONFIG[currentRole]?.demoUser || null;
@@ -104,11 +111,14 @@ export const AuthProvider = ({ children }) => {
     currentRole,
     currentUser,
     switchRole,
+    switchAccount,
     setRole: switchRole,
     language,
     setLanguage,
     isAudioActive,
-    toggleAudio
+    toggleAudio,
+    isOffline,
+    toggleOffline
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

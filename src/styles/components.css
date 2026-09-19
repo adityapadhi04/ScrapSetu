@@ -515,7 +515,23 @@ h1, h2, h3, h4, h5, h6 {
   }
   .app-sidebar {
     display: none;
+    position: fixed;
+    top: 55px;
+    left: 0;
+    bottom: 0;
+    z-index: 95;
+    background: #ffffff;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+    width: 260px !important;
   }
+  .app-sidebar.open {
+    display: flex !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary-600);
+  outline-offset: 2px;
 }
 
 /* ---------------------------------------------------------

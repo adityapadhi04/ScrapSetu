@@ -18,7 +18,7 @@ export const MobileBottomNav = ({ role = 'COLLECTOR' }) => {
     { label: 'Home', path: '/recycler', icon: Home, end: true },
     { label: 'Lots', path: '/recycler/lots', icon: Package },
     { label: 'Pickups', path: '/recycler/pickups', icon: Truck },
-    { label: 'Orders', path: '/recycler/orders', icon: ClipboardList },
+    { label: 'Transactions', path: '/recycler/orders', icon: ClipboardList },
     { label: 'Profile', path: '/recycler/profile', icon: User }
   ];
 

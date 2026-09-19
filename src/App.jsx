@@ -1,8 +1,7 @@
 import React from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Header from './components/common/Header';
-import RoleSwitcherBar from './components/role-switch/RoleSwitcherBar';
 import LandingPage from './pages/landing/LandingPage';
 import CollectorDashboard from './pages/collector/CollectorDashboard';
 import {
@@ -17,22 +16,30 @@ import {
   RecyclerLotsPage,
   RecyclerPickupsPage,
   RecyclerOffersPage,
-  RecyclerOrdersPage
+  RecyclerOrdersPage,
+  RecyclerProfilePage
 } from './pages/recycler/RecyclerSubpages';
 import RepairShopDashboard from './pages/repair-shop/RepairShopDashboard';
+import {
+  RepairShopComponentsPage,
+  RepairShopWantedPage,
+  RepairShopOffersPage,
+  RepairShopPurchasesPage,
+  RepairShopTransactionsPage,
+  RepairShopProfilePage
+} from './pages/repair-shop/RepairShopSubpages';
 import AdminDashboard from './pages/admin/AdminDashboard';
 
-function AppLayout() {
-  const location = useLocation();
-  const isLanding = location.pathname === '/';
+import { OfflineBanner } from './components/common/OfflineState';
 
+function AppLayout() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* SIH Evaluation Prototype Role Switcher */}
-      <RoleSwitcherBar />
+      {/* Clean Global Header */}
+      <Header />
 
-      {/* Main Header (shown on all role dashboards; landing has its own hero) */}
-      {!isLanding && <Header />}
+      {/* Offline Status Warning Banner (Shown only when offline) */}
+      <OfflineBanner />
 
       {/* Role & Feature Routes */}
       <div style={{ flex: 1 }}>
@@ -54,9 +61,16 @@ function AppLayout() {
           <Route path="/recycler/pickups" element={<RecyclerPickupsPage />} />
           <Route path="/recycler/offers" element={<RecyclerOffersPage />} />
           <Route path="/recycler/orders" element={<RecyclerOrdersPage />} />
+          <Route path="/recycler/profile" element={<RecyclerProfilePage />} />
 
           {/* 3. Repair Shop Routes */}
           <Route path="/repair-shop" element={<RepairShopDashboard />} />
+          <Route path="/repair-shop/components" element={<RepairShopComponentsPage />} />
+          <Route path="/repair-shop/wanted" element={<RepairShopWantedPage />} />
+          <Route path="/repair-shop/offers" element={<RepairShopOffersPage />} />
+          <Route path="/repair-shop/purchases" element={<RepairShopPurchasesPage />} />
+          <Route path="/repair-shop/transactions" element={<RepairShopTransactionsPage />} />
+          <Route path="/repair-shop/profile" element={<RepairShopProfilePage />} />
 
           {/* 4. Admin Routes */}
           <Route path="/admin" element={<AdminDashboard />} />

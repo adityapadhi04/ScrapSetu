@@ -4,7 +4,7 @@ import { useAuth, ROLES } from '../../context/AuthContext';
 import { Layers } from 'lucide-react';
 
 export const RoleSwitcherBar = () => {
-  const { currentRole, setRole } = useAuth();
+  const { currentRole, setRole, isOffline, toggleOffline } = useAuth();
 
   return (
     <div className="role-switcher-bar">
@@ -44,6 +44,24 @@ export const RoleSwitcherBar = () => {
         >
           🛡️ Admin
         </NavLink>
+
+        <button
+          onClick={toggleOffline}
+          style={{
+            background: isOffline ? '#78350f' : '#14532d',
+            color: isOffline ? '#fef3c7' : '#bbf7d0',
+            border: `1px solid ${isOffline ? '#f59e0b' : '#22c55e'}`,
+            padding: '2px 8px',
+            borderRadius: '6px',
+            fontSize: '0.74rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            marginLeft: '8px'
+          }}
+          title="Simulate Field Offline Condition"
+        >
+          {isOffline ? '🟠 Simulated: OFFLINE' : '🟢 ONLINE'}
+        </button>
       </div>
     </div>
   );
