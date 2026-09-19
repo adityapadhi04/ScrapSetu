@@ -6,6 +6,7 @@
 
 import { MATERIAL_CATALOG, MATERIAL_OPTIONS as CATALOG_MATERIAL_OPTIONS } from '../data/materialCatalog.js';
 import { createMaterialRecord, resetMaterialDataset } from './materialDatasetService.js';
+import { createPriceRecord, resetPriceDataset } from './priceDatasetService.js';
 
 export const STORAGE_KEY_SCRAP_LOTS = 'scrapsetu_scrap_lots';
 
@@ -50,11 +51,12 @@ export const CONDITION_OPTIONS = [
   }
 ];
 
-// Initial seed lots for usr-collector-01 linked to MAT-0001 and MAT-0002
+// Initial seed lots for usr-collector-01 linked to MAT-0001, MAT-0002 and PRICE-0001, PRICE-0005
 const SEED_LOTS = [
   {
     id: 'LOT-0001',
     materialId: 'MAT-0001',
+    priceId: 'PRICE-0001',
     collectorId: 'usr-collector-01',
     materialType: 'PCB',
     materialCategory: 'Electronic Components',
@@ -73,11 +75,15 @@ const SEED_LOTS = [
     createdAt: '2026-09-18T10:00:00.000Z',
     identificationMethod: 'manual',
     confidenceScore: 1.0,
-    collectorConfirmed: true
+    collectorConfirmed: true,
+    estimatedPrice: 320,
+    estimatedLotValueMin: 720,
+    estimatedLotValueMax: 816
   },
   {
     id: 'LOT-0002',
     materialId: 'MAT-0002',
+    priceId: 'PRICE-0005',
     collectorId: 'usr-collector-01',
     materialType: 'Cable',
     materialCategory: 'Cables & Wires',
@@ -96,7 +102,10 @@ const SEED_LOTS = [
     createdAt: '2026-09-19T08:30:00.000Z',
     identificationMethod: 'manual',
     confidenceScore: 1.0,
-    collectorConfirmed: true
+    collectorConfirmed: true,
+    estimatedPrice: 660,
+    estimatedLotValueMin: 3200,
+    estimatedLotValueMax: 3400
   }
 ];
 
@@ -175,7 +184,10 @@ export const createScrapLot = ({
   collectorConfirmed = true,
   aiSuggestedCategory = null,
   aiSuggestedSubcategory = null,
-  aiConfidenceScore = null
+  aiConfidenceScore = null,
+  estimatedPrice = null,
+  estimatedLotValueMin = null,
+  estimatedLotValueMax = null
 }) => {
   if (!collectorId) {
     throw new Error('collectorId is required');
@@ -211,6 +223,26 @@ export const createScrapLot = ({
   const derivedCategory = materialCategory || categoryMatch?.category || 'Electronic Components';
   const derivedSubcategory = materialSubcategory || categoryMatch?.defaultSubcategory || materialType;
 
+  // Resolve numeric estimated price if passed as number or estimate object
+  let numericEstimatedPrice = null;
+  let lotValueMin = null;
+  let lotValueMax = null;
+
+  if (typeof estimatedPrice === 'number' && !isNaN(estimatedPrice)) {
+    numericEstimatedPrice = estimatedPrice;
+  } else if (estimatedPrice && typeof estimatedPrice === 'object') {
+    numericEstimatedPrice = estimatedPrice.midPrice ?? estimatedPrice.estimatedPrice ?? null;
+    lotValueMin = estimatedPrice.estimatedLotValueMin ?? null;
+    lotValueMax = estimatedPrice.estimatedLotValueMax ?? null;
+  }
+
+  if (estimatedLotValueMin !== null && estimatedLotValueMin !== undefined) {
+    lotValueMin = parseFloat(estimatedLotValueMin);
+  }
+  if (estimatedLotValueMax !== null && estimatedLotValueMax !== undefined) {
+    lotValueMax = parseFloat(estimatedLotValueMax);
+  }
+
   // Create linked SIH Material Dataset Record first to ensure synchronization
   const materialRecord = createMaterialRecord({
     lotId: newLotId,
@@ -223,6 +255,7 @@ export const createScrapLot = ({
     weightUnit: weightUnit === 'g' ? 'g' : 'kg',
     condition: condition.toLowerCase(),
     sourceType: 'Informal Collector',
+    estimatedValue: numericEstimatedPrice,
     identificationMethod,
     confidenceScore: confidenceScore !== undefined ? parseFloat(confidenceScore) : 1.0,
     collectorConfirmed: Boolean(collectorConfirmed),
@@ -232,9 +265,32 @@ export const createScrapLot = ({
     createdAt: new Date().toISOString()
   });
 
+  // Create linked SIH Price Dataset record if estimated price exists
+  let priceRecord = null;
+  if (numericEstimatedPrice !== null && numericEstimatedPrice !== undefined) {
+    try {
+      priceRecord = createPriceRecord({
+        lotId: newLotId,
+        materialId: materialRecord.materialId,
+        materialCategory: derivedCategory,
+        materialSubcategory: derivedSubcategory,
+        location: normalizedLocation,
+        estimatedPrice: numericEstimatedPrice,
+        buyingPrice: null,
+        quotedPrice: null,
+        sellingPrice: null,
+        sourceType: 'platform_estimate',
+        recordedAt: materialRecord.createdAt
+      });
+    } catch (err) {
+      console.warn('Failed to create linked price record:', err);
+    }
+  }
+
   const newLot = {
     id: newLotId,
     materialId: materialRecord.materialId,
+    priceId: priceRecord ? priceRecord.priceId : null,
     collectorId,
     materialType,
     materialCategory: derivedCategory,
@@ -252,7 +308,10 @@ export const createScrapLot = ({
     collectorConfirmed: materialRecord.collectorConfirmed,
     aiSuggestedCategory: materialRecord.aiSuggestedCategory,
     aiSuggestedSubcategory: materialRecord.aiSuggestedSubcategory,
-    aiConfidenceScore: materialRecord.aiConfidenceScore
+    aiConfidenceScore: materialRecord.aiConfidenceScore,
+    estimatedPrice: numericEstimatedPrice,
+    estimatedLotValueMin: lotValueMin,
+    estimatedLotValueMax: lotValueMax
   };
 
   const updatedLots = [newLot, ...allLots];
@@ -275,10 +334,11 @@ export const createScrapLot = ({
 };
 
 /**
- * Reset scrap lots and material dataset to initial seed state
+ * Reset scrap lots, material dataset, and price dataset to initial seed state
  */
 export const resetScrapLots = () => {
   localStorage.setItem(STORAGE_KEY_SCRAP_LOTS, JSON.stringify(SEED_LOTS));
   resetMaterialDataset();
+  resetPriceDataset();
   return SEED_LOTS;
 };

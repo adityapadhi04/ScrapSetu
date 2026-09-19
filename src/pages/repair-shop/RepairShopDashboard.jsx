@@ -34,32 +34,48 @@ import {
   MOCK_REPAIR_SHOP_PURCHASES,
   MOCK_REPAIR_SHOP_OFFERS
 } from '../../data/mockData';
+import { getWantedItems, createWantedItem } from '../../services/repairShopService';
 
 export const RepairShopDashboard = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { currentUser } = useAuth();
-  const [wantedList, setWantedList] = useState(MOCK_REPAIR_SHOP_WANTED);
+  const [wantedList, setWantedList] = useState(() => {
+    const items = getWantedItems('SHOP-0002');
+    return items.length > 0 ? items : getWantedItems();
+  });
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState('');
+  const [newCategory, setNewCategory] = useState('Laptop / Computer');
+  const [newSubcategory, setNewSubcategory] = useState('');
+  const [newCondition, setNewCondition] = useState('Good');
+  const [newQuantity, setNewQuantity] = useState('5');
   const [newPrice, setNewPrice] = useState('');
 
   const handleAddWanted = (e) => {
     e.preventDefault();
     if (!newTitle) return;
-    const newItem = {
-      id: `WANT-0${wantedList.length + 1}`,
-      name: newTitle,
-      category: newCategory || newTitle,
-      conditionNeeded: 'Tested / Salvageable',
-      offeringPrice: newPrice || 'Market Rate',
-      matchesFound: 1,
-      urgency: 'Active Demand'
-    };
-    setWantedList([newItem, ...wantedList]);
+    try {
+      const created = createWantedItem({
+        repairShopId: 'SHOP-0002',
+        name: newTitle,
+        materialCategory: newCategory || 'Laptop / Computer',
+        materialSubcategory: newSubcategory || newTitle,
+        preferredCondition: newCondition || 'Good',
+        quantityNeeded: parseInt(newQuantity, 10) || 5,
+        offeringPrice: newPrice || 'Market Rate',
+        location: 'Lamington Road, Mumbai',
+        urgency: 'Active Demand'
+      });
+      setWantedList([created, ...wantedList]);
+    } catch (err) {
+      console.error('Failed to create wanted item:', err);
+    }
     setNewTitle('');
-    setNewCategory('');
+    setNewCategory('Laptop / Computer');
+    setNewSubcategory('');
+    setNewCondition('Good');
+    setNewQuantity('5');
     setNewPrice('');
     setIsAddModalOpen(false);
   };
@@ -330,21 +346,99 @@ export const RepairShopDashboard = () => {
             <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
               Broadcast required parts to local collectors. Example wanted items: Laptop RAM, Laptop Display, SMPS, Motor, Mobile Components.
             </p>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                Material Category (सामग्री श्रेणी)
+              </label>
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.75rem',
+                  fontSize: '0.9rem',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#0f172a',
+                  outline: 'none'
+                }}
+              >
+                <option value="Laptop / Computer">Laptop / Computer</option>
+                <option value="Mobile Phone">Mobile Phone</option>
+                <option value="LCD / Display">LCD / Display</option>
+                <option value="PCB">Printed Circuit Board (PCB)</option>
+                <option value="Motor">Electric Motor / Transformer</option>
+                <option value="Cable">Wires & Cables</option>
+                <option value="Other E-waste">Other E-waste</option>
+              </select>
+            </div>
+
             <Input
-              label="Component Name"
-              placeholder="e.g. Laptop RAM / Laptop Display / SMPS / Motor / Mobile Components"
+              label="Component Name (घटक का नाम)"
+              placeholder="e.g. Laptop RAM / Laptop Display / SMPS / Mobile Screen"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               required
             />
             <Input
-              label="Specification or Model Details"
-              placeholder="e.g. Dell Inspiron 15 Motherboard / DDR4 8GB / 500W SMPS"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
+              label="Specification or Model Details (विशिष्टता)"
+              placeholder="e.g. Dell Inspiron 15 / DDR4 8GB / 15.6 LED 30-Pin"
+              value={newSubcategory}
+              onChange={(e) => setNewSubcategory(e.target.value)}
             />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Preferred Condition
+                </label>
+                <select
+                  value={newCondition}
+                  onChange={(e) => setNewCondition(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.75rem',
+                    fontSize: '0.9rem',
+                    borderRadius: '8px',
+                    border: '1.5px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="Good">Good (Intact / Working)</option>
+                  <option value="Fair">Fair (Salvageable / Tested)</option>
+                  <option value="Any">Any Condition (Parts Extraction)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Quantity Needed
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newQuantity}
+                  onChange={(e) => setNewQuantity(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.75rem',
+                    fontSize: '0.9rem',
+                    borderRadius: '8px',
+                    border: '1.5px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                  required
+                />
+              </div>
+            </div>
+
             <Input
-              label="Offering Price or Budget"
+              label="Offering Price or Budget (प्रस्तावित दर)"
               placeholder="e.g. ₹400 – ₹800 / piece"
               value={newPrice}
               onChange={(e) => setNewPrice(e.target.value)}

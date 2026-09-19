@@ -231,6 +231,7 @@ export const createMaterialRecord = ({
   weightUnit = 'kg',
   condition,
   sourceType = 'Informal Collector',
+  estimatedValue = null,
   identificationMethod = 'manual',
   confidenceScore = 1.0,
   collectorConfirmed = true,
@@ -255,7 +256,7 @@ export const createMaterialRecord = ({
     weightUnit: weightUnit === 'g' ? 'g' : 'kg',
     condition: condition ? condition.toLowerCase() : 'fair',
     sourceType,
-    estimatedValue: null, // Explicitly null for Module 4 (Module 5 will implement pricing)
+    estimatedValue: estimatedValue !== undefined ? estimatedValue : null,
     identificationMethod,
     confidenceScore: confidenceScore !== undefined ? parseFloat(confidenceScore) : 1.0,
     collectorConfirmed: Boolean(collectorConfirmed),

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Camera, 
@@ -33,7 +33,8 @@ import {
   Zap,
   Monitor,
   Smartphone,
-  Laptop
+  Laptop,
+  Wrench
 } from 'lucide-react';
 import PageContainer from '../../components/common/PageContainer';
 import MobileBottomNav from '../../components/common/MobileBottomNav';
@@ -57,6 +58,10 @@ import {
 } from '../../data/mockData';
 import { identifyMaterial } from '../../services/materialIdentificationService';
 import { getCatalogItemByCategory } from '../../data/materialCatalog';
+import { estimateFairPrice } from '../../services/priceIntelligenceService';
+import { evaluateReusePotential } from '../../services/reuseIntelligenceService';
+import { findRepairShopMatches } from '../../services/repairMatchingService';
+import { createRepairInquiry } from '../../services/repairShopService';
 
 /**
  * 7-Step Mobile-First Scrap Lot Creation Wizard for Collector (Module 3)
@@ -96,6 +101,82 @@ export const CollectorSellPage = () => {
   const [aiSuggestedCategory, setAiSuggestedCategory] = useState(null);
   const [aiSuggestedSubcategory, setAiSuggestedSubcategory] = useState(null);
   const [aiConfidenceScore, setAiConfidenceScore] = useState(null);
+
+  // Module 5: Price Intelligence State
+  const [showWhyPriceModal, setShowWhyPriceModal] = useState(false);
+
+  // Compute explainable Fair Price Estimate dynamically
+  const priceEstimate = useMemo(() => {
+    if (!materialType || !weight) return null;
+    const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === materialType);
+    const category = selectedMatObj?.category || 'Electronic Components';
+    const numWeight = parseFloat(weight);
+    if (isNaN(numWeight) || numWeight <= 0) return null;
+
+    return estimateFairPrice({
+      materialCategory: category,
+      materialSubcategory: materialSubcategory || selectedMatObj?.defaultSubcategory || materialType,
+      weight: numWeight,
+      weightUnit,
+      condition,
+      location: locationArea
+    });
+  }, [materialType, materialSubcategory, weight, weightUnit, condition, locationArea]);
+
+  // Module 6: Reuse Intelligence & Repair Shop Marketplace State
+  const [showRepairShopsModal, setShowRepairShopsModal] = useState(false);
+  const [selectedShopDetails, setSelectedShopDetails] = useState(null);
+  const [interestSentShops, setInterestSentShops] = useState([]);
+
+  // Compute explainable Reuse Potential dynamically (Module 6)
+  const reusePotential = useMemo(() => {
+    if (!materialType) return null;
+    const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === materialType);
+    const category = selectedMatObj?.category || materialType;
+    return evaluateReusePotential({
+      materialCategory: category,
+      materialSubcategory: materialSubcategory || selectedMatObj?.defaultSubcategory || materialType,
+      condition,
+      weight: parseFloat(weight) || 0
+    });
+  }, [materialType, materialSubcategory, condition, weight]);
+
+  // Compute matching repair shops dynamically (Module 6)
+  const repairShopMatches = useMemo(() => {
+    if (!reusePotential || (reusePotential.pathway !== 'reuse' && reusePotential.pathway !== 'both')) {
+      return [];
+    }
+    const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === materialType);
+    const category = selectedMatObj?.category || materialType;
+    return findRepairShopMatches({
+      materialCategory: category,
+      materialSubcategory: materialSubcategory || selectedMatObj?.defaultSubcategory || materialType,
+      condition,
+      location: locationArea
+    });
+  }, [reusePotential, materialType, materialSubcategory, condition, locationArea]);
+
+  const handleSendInterest = (shopMatch) => {
+    const targetShop = shopMatch.shop || shopMatch;
+    try {
+      createRepairInquiry({
+        collectorId: activeCollectorId,
+        collectorName: user?.name || 'Ramesh Kumar',
+        lotId: createdLot?.id || null,
+        repairShopId: targetShop.repairShopId,
+        repairShopName: targetShop.name,
+        materialCategory: materialType,
+        materialSubcategory,
+        condition,
+        weightKg: parseFloat(weight) || 0,
+        estimatedPrice: priceEstimate?.estimatedPrice || null,
+        collectorLocation: locationArea
+      });
+      setInterestSentShops((prev) => [...prev, targetShop.repairShopId]);
+    } catch (err) {
+      console.error('Failed to send interest to repair shop:', err);
+    }
+  };
 
   // Hidden File Inputs for Camera & Gallery
   const cameraInputRef = useRef(null);
@@ -268,7 +349,10 @@ export const CollectorSellPage = () => {
         collectorConfirmed: true,
         aiSuggestedCategory,
         aiSuggestedSubcategory,
-        aiConfidenceScore
+        aiConfidenceScore,
+        estimatedPrice: priceEstimate?.midPrice || null,
+        estimatedLotValueMin: priceEstimate?.estimatedLotValueMin || null,
+        estimatedLotValueMax: priceEstimate?.estimatedLotValueMax || null
       });
 
       setCreatedLot(newLot);
@@ -296,6 +380,7 @@ export const CollectorSellPage = () => {
     setAiSuggestedCategory(null);
     setAiSuggestedSubcategory(null);
     setAiConfidenceScore(null);
+    setShowWhyPriceModal(false);
     setWeight('');
     setWeightUnit('kg');
     setCondition('fair');
@@ -1501,6 +1586,763 @@ export const CollectorSellPage = () => {
               </div>
             </Card>
 
+            {/* Module 5: Estimated Fair Price & Value Card */}
+            {priceEstimate && (
+              <Card
+                id="estimated-fair-price-card"
+                style={{
+                  padding: '1.25rem',
+                  border: '2px solid #86efac',
+                  background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+                  borderRadius: '14px',
+                  marginBottom: '1.25rem',
+                  boxShadow: '0 2px 8px rgba(21, 128, 61, 0.08)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: '#dcfce7',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#15803d'
+                      }}
+                    >
+                      <IndianRupee size={18} />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#166534', margin: 0 }}>
+                        {t('estimatedFairPrice')}
+                      </h3>
+                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                        {t('prototypeEstimateNotice')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <span
+                    style={{
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      color: '#047857',
+                      background: '#d1fae5',
+                      padding: '2px 8px',
+                      borderRadius: '99px'
+                    }}
+                  >
+                    Demo Prototype
+                  </span>
+                </div>
+
+                {priceEstimate.isReliable ? (
+                  <>
+                    <div
+                      style={{
+                        background: '#ffffff',
+                        border: '1.5px solid #86efac',
+                        borderRadius: '12px',
+                        padding: '1rem',
+                        marginBottom: '0.85rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700 }}>
+                          {t('ratePerKg')}
+                        </span>
+                        <span
+                          id="estimated-rate-range"
+                          style={{ fontSize: '1.35rem', fontWeight: 900, color: '#15803d' }}
+                        >
+                          ₹{priceEstimate.minPrice} – ₹{priceEstimate.maxPrice} <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#64748b' }}>/ kg</span>
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderTop: '1px dashed #e2e8f0', paddingTop: '6px', marginTop: '6px' }}>
+                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700 }}>
+                          {t('estimatedLotValue')} ({weight} {weightUnit})
+                        </span>
+                        <span
+                          id="estimated-lot-value"
+                          style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}
+                        >
+                          ₹{priceEstimate.estimatedLotValueMin} – ₹{priceEstimate.estimatedLotValueMax}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <button
+                        id="btn-why-this-price"
+                        type="button"
+                        onClick={() => setShowWhyPriceModal(true)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          background: 'none',
+                          border: 'none',
+                          color: '#15803d',
+                          fontSize: '0.82rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          padding: '4px 0'
+                        }}
+                      >
+                        <HelpCircle size={15} />
+                        <span>{t('whyThisPrice')}</span>
+                      </button>
+
+                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                        {priceEstimate.historicalRecordsUsed} {t('historicalRecordsUsed').toLowerCase()}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div
+                    style={{
+                      background: '#fffbeb',
+                      border: '1.5px solid #fde68a',
+                      borderRadius: '10px',
+                      padding: '0.85rem',
+                      color: '#92400e'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.85rem', marginBottom: '2px' }}>
+                      <AlertCircle size={16} />
+                      <span>{t('notEnoughHistoricalData')}</span>
+                    </div>
+                    <p style={{ fontSize: '0.78rem', color: '#b45309', margin: 0 }}>
+                      {t('notEnoughDataExplanation')}
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.65rem', lineHeight: '1.3' }}>
+                  ℹ️ {t('informationalEstimateDisclaimer')}
+                </div>
+              </Card>
+            )}
+
+            {/* Module 6: Reuse Before Recycle Advisory & Repair Shop Matches */}
+            {reusePotential && (
+              <Card
+                id="reuse-recommendation-card"
+                style={{
+                  padding: '1.25rem',
+                  border: (reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both')
+                    ? '2px solid #fde047'
+                    : '2px solid #93c5fd',
+                  background: (reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both')
+                    ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)'
+                    : 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+                  borderRadius: '14px',
+                  marginBottom: '1.25rem',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.65rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: (reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? '#fef3c7' : '#e0f2fe',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: (reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? '#d97706' : '#0284c7'
+                      }}
+                    >
+                      {(reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? <Wrench size={18} /> : <Recycle size={18} />}
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        {t('reuseBeforeRecycle')}
+                      </h3>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                        {t('reusePathwayRecommendation')}
+                      </span>
+                    </div>
+                  </div>
+
+                  <span
+                    id="reuse-pathway-badge"
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      color: (reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? '#92400e' : '#075985',
+                      background: (reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? '#fef3c7' : '#e0f2fe',
+                      border: `1px solid ${(reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? '#fde68a' : '#bae6fd'}`,
+                      padding: '3px 9px',
+                      borderRadius: '99px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em'
+                    }}
+                  >
+                    {(reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? `🔧 ${t('pathwayReuse')}` : `♻️ ${t('pathwayRecycle')}`}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid rgba(0, 0, 0, 0.08)',
+                    borderRadius: '10px',
+                    padding: '0.85rem',
+                    marginBottom: '0.85rem',
+                    fontSize: '0.85rem',
+                    lineHeight: '1.45',
+                    color: '#334155'
+                  }}
+                >
+                  <p style={{ margin: '0 0 6px 0', fontWeight: 600 }}>
+                    {reusePotential.reason}
+                  </p>
+                  <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                    {reusePotential.suggestedActions?.join(' • ')}
+                  </div>
+                </div>
+
+                {/* Pathway Specific Action */}
+                {(reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') ? (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#92400e' }}>
+                        ⚡ {repairShopMatches.length} {t('repairShopsInterested')}
+                      </span>
+                      <button
+                        id="btn-find-repair-shops"
+                        type="button"
+                        onClick={() => setShowRepairShopsModal(true)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: '#d97706',
+                          color: '#ffffff',
+                          border: 'none',
+                          padding: '0.5rem 0.95rem',
+                          borderRadius: '8px',
+                          fontSize: '0.82rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 6px rgba(217, 119, 6, 0.3)'
+                        }}
+                      >
+                        <Wrench size={14} />
+                        <span>{t('findRepairShops')} ({repairShopMatches.length})</span>
+                      </button>
+                    </div>
+
+                    {/* Quick Preview of Top Match */}
+                    {repairShopMatches.length > 0 && (
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #fef3c7',
+                          borderRadius: '8px',
+                          padding: '0.65rem 0.85rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        <div>
+                          <strong style={{ color: '#0f172a' }}>{repairShopMatches[0].shop.name}</strong>
+                          <span style={{ color: '#64748b', marginLeft: '6px', fontSize: '0.72rem' }}>
+                            📍 {repairShopMatches[0].distanceLabel}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 700 }}>
+                          ✓ {repairShopMatches[0].matchReasons[0]}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      background: '#f0f9ff',
+                      border: '1px solid #bae6fd',
+                      borderRadius: '8px',
+                      padding: '0.65rem 0.85rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.78rem', color: '#0369a1' }}>
+                      {t('recyclingRecommendedDesc')}
+                    </span>
+                    <button
+                      id="btn-continue-recycler"
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById('btn-create-lot');
+                        el?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      style={{
+                        background: '#0284c7',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '0.45rem 0.85rem',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {t('continueToRecycler')} →
+                    </button>
+                  </div>
+                )}
+
+                <div style={{ fontSize: '0.68rem', color: '#94a3b8', marginTop: '0.65rem', lineHeight: '1.3' }}>
+                  ℹ️ {t('reusePrototypeNotice')} • {t('repairShopNotice')}
+                </div>
+              </Card>
+            )}
+
+            {/* Modal: Repair Shops Interested (Module 6) */}
+            {showRepairShopsModal && (
+              <div
+                id="repair-shops-modal"
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(15, 23, 42, 0.55)',
+                  backdropFilter: 'blur(3px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem',
+                  zIndex: 9999
+                }}
+                onClick={() => setShowRepairShopsModal(false)}
+              >
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    maxWidth: '520px',
+                    width: '100%',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
+                    padding: '1.5rem',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                    border: '1px solid #e2e8f0'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: 34, height: 34, borderRadius: '8px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706' }}>
+                        <Wrench size={18} />
+                      </div>
+                      <div>
+                        <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                          {t('repairShopsInterested')}
+                        </h3>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                          Based on {materialType} • {condition} condition • {locationArea || 'Gunupur'}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      id="btn-close-repair-shops"
+                      type="button"
+                      onClick={() => setShowRepairShopsModal(false)}
+                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px', fontSize: '1.2rem' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.65rem 0.85rem', fontSize: '0.74rem', color: '#92400e', marginBottom: '1rem' }}>
+                    ⚠️ {t('repairShopNotice')}
+                  </div>
+
+                  {repairShopMatches.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748b' }}>
+                      <p style={{ margin: 0, fontWeight: 700 }}>No repair shops found matching this material in this area.</p>
+                      <span style={{ fontSize: '0.75rem' }}>You can still create a scrap lot to reach formal aggregators.</span>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.25rem' }}>
+                      {repairShopMatches.map((match) => {
+                        const shop = match.shop;
+                        const isSent = interestSentShops.includes(shop.repairShopId);
+
+                        return (
+                          <div
+                            key={shop.repairShopId}
+                            style={{
+                              border: '1.5px solid #e2e8f0',
+                              borderRadius: '12px',
+                              padding: '1rem',
+                              background: '#ffffff',
+                              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                              <div>
+                                <h4 style={{ margin: '0 0 2px 0', fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                                  {shop.name}
+                                </h4>
+                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                  📍 {match.distanceLabel} • Owner: <strong>{shop.ownerName}</strong>
+                                </span>
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: '0.7rem',
+                                  fontWeight: 800,
+                                  color: match.hasActiveDemand ? '#b45309' : '#15803d',
+                                  background: match.hasActiveDemand ? '#fef3c7' : '#dcfce7',
+                                  padding: '2px 8px',
+                                  borderRadius: '99px'
+                                }}
+                              >
+                                {match.compatibility}
+                              </span>
+                            </div>
+
+                            {/* Active Wanted Item Banner if present */}
+                            {match.matchedWantedItem && (
+                              <div
+                                style={{
+                                  background: '#fffbeb',
+                                  border: '1px dashed #fde68a',
+                                  borderRadius: '6px',
+                                  padding: '4px 8px',
+                                  fontSize: '0.74rem',
+                                  color: '#b45309',
+                                  margin: '6px 0',
+                                  display: 'flex',
+                                  justifyContent: 'space-between'
+                                }}
+                              >
+                                <span>⭐ <strong>Wants:</strong> {match.matchedWantedItem.materialCategory} ({match.matchedWantedItem.preferredCondition})</span>
+                                <strong>{match.matchedWantedItem.offeringPrice}</strong>
+                              </div>
+                            )}
+
+                            {/* "Why this shop?" Explanation */}
+                            <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '0.6rem 0.75rem', margin: '8px 0' }}>
+                              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                                {t('whyThisShop')}
+                              </span>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                {match.matchReasons.map((r, i) => (
+                                  <span key={i} style={{ fontSize: '0.74rem', color: '#334155', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span style={{ color: '#15803d', fontWeight: 800 }}>✓</span> {r}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedShopDetails(shop)}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#0284c7',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  padding: '4px 0'
+                                }}
+                              >
+                                {t('viewShopDetails')} →
+                              </button>
+
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  disabled={isSent}
+                                  onClick={() => handleSendInterest(match)}
+                                  style={{
+                                    background: isSent ? '#dcfce7' : '#15803d',
+                                    color: isSent ? '#15803d' : '#ffffff',
+                                    border: isSent ? '1px solid #86efac' : 'none',
+                                    padding: '0.45rem 0.85rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 800,
+                                    cursor: isSent ? 'default' : 'pointer'
+                                  }}
+                                >
+                                  {isSent ? t('interestSent') : t('sendInterest')}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowRepairShopsModal(false)}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      background: '#f1f5f9',
+                      color: '#475569',
+                      border: 'none',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {t('skipDecideLater')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Modal: View Shop Details */}
+            {selectedShopDetails && (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  backdropFilter: 'blur(3px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem',
+                  zIndex: 10000
+                }}
+                onClick={() => setSelectedShopDetails(null)}
+              >
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    maxWidth: '440px',
+                    width: '100%',
+                    padding: '1.5rem',
+                    border: '1px solid #e2e8f0'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        {selectedShopDetails.name}
+                      </h3>
+                      <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                        ID: {selectedShopDetails.repairShopId} • {selectedShopDetails.sourceType === 'demo_seed' ? 'Demo Seed Shop' : 'Registered Shop'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedShopDetails(null)}
+                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.2rem' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>Location</span>
+                      <strong>📍 {typeof selectedShopDetails.location === 'object' ? `${selectedShopDetails.location.area}, ${selectedShopDetails.location.state}` : selectedShopDetails.location}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>Owner / Contact</span>
+                      <strong>{selectedShopDetails.ownerName} • {selectedShopDetails.contact}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>Accepted Materials</span>
+                      <strong>{selectedShopDetails.acceptedMaterials?.join(', ')}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block', fontSize: '0.75rem' }}>Services</span>
+                      <span>{selectedShopDetails.services?.join(' • ')}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedShopDetails(null)}
+                      style={{
+                        flex: 1,
+                        padding: '0.65rem',
+                        borderRadius: '8px',
+                        background: '#f1f5f9',
+                        color: '#475569',
+                        border: 'none',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="button"
+                      disabled={interestSentShops.includes(selectedShopDetails.repairShopId)}
+                      onClick={() => {
+                        handleSendInterest(selectedShopDetails);
+                        setSelectedShopDetails(null);
+                      }}
+                      style={{
+                        flex: 2,
+                        padding: '0.65rem',
+                        borderRadius: '8px',
+                        background: interestSentShops.includes(selectedShopDetails.repairShopId) ? '#dcfce7' : '#15803d',
+                        color: interestSentShops.includes(selectedShopDetails.repairShopId) ? '#15803d' : '#ffffff',
+                        border: 'none',
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {interestSentShops.includes(selectedShopDetails.repairShopId) ? t('interestSent') : t('sendInterest')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Why This Price Modal */}
+            {showWhyPriceModal && priceEstimate && (
+              <div
+                id="why-price-modal"
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(15, 23, 42, 0.55)',
+                  backdropFilter: 'blur(3px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1rem',
+                  zIndex: 9999
+                }}
+                onClick={() => setShowWhyPriceModal(false)}
+              >
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    maxWidth: '440px',
+                    width: '100%',
+                    padding: '1.5rem',
+                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                    border: '1px solid #e2e8f0'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '8px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#15803d' }}>
+                        <HelpCircle size={18} />
+                      </div>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                        {t('whyThisPriceTitle')}
+                      </h3>
+                    </div>
+                    <button
+                      id="btn-close-why-price"
+                      type="button"
+                      onClick={() => setShowWhyPriceModal(false)}
+                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px', fontSize: '1.1rem' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Plain Language Explanation */}
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '0.85rem',
+                      fontSize: '0.86rem',
+                      lineHeight: '1.45',
+                      color: '#334155',
+                      marginBottom: '1rem'
+                    }}
+                  >
+                    {priceEstimate.plainExplanation}
+                  </div>
+
+                  {/* Pricing Breakdown Factors */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9' }}>
+                      <span style={{ color: '#64748b' }}>{t('factorMaterial')}</span>
+                      <strong>₹{priceEstimate.historicalMidPrice} / kg</strong>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9' }}>
+                      <span style={{ color: '#64748b' }}>{t('factorCondition')}</span>
+                      <strong>{selectedConditionObj.symbol} {selectedConditionObj.fallbackName} (×{priceEstimate.factors.conditionMultiplier})</strong>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9' }}>
+                      <span style={{ color: '#64748b' }}>{t('factorWeight')}</span>
+                      <strong>{weight} {weightUnit}</strong>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', paddingBottom: '6px', borderBottom: '1px solid #f1f5f9' }}>
+                      <span style={{ color: '#64748b' }}>{t('factorLocation')}</span>
+                      <strong>📍 {locationArea || 'Gunupur'}</strong>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: '#64748b' }}>{t('factorRecordsCount')}</span>
+                      <strong>{priceEstimate.historicalRecordsUsed} records</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '0.65rem 0.85rem', fontSize: '0.72rem', color: '#166534', marginBottom: '1rem' }}>
+                    ⚠️ {t('demoDataNotice')} {t('informationalEstimateDisclaimer')}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowWhyPriceModal(false)}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      background: '#15803d',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {t('close') || 'Got it'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Optional Additional Notes */}
             <div style={{ marginBottom: '1.5rem' }}>
               <label
@@ -1631,13 +2473,13 @@ export const CollectorSellPage = () => {
                 {t('lotCreatedSuccess')}
               </h2>
 
-              {/* Prominent Lot ID and Material ID Display */}
+              {/* Prominent Lot ID, Material ID, and Price ID Display */}
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
+                  gridTemplateColumns: createdLot.priceId ? '1fr 1fr 1fr' : '1fr 1fr',
                   gap: '8px',
-                  maxWidth: '320px',
+                  maxWidth: '380px',
                   margin: '0 auto 1.25rem auto'
                 }}
               >
@@ -1646,15 +2488,15 @@ export const CollectorSellPage = () => {
                     background: '#ffffff',
                     border: '2px dashed #86efac',
                     borderRadius: '12px',
-                    padding: '0.75rem'
+                    padding: '0.65rem'
                   }}
                 >
-                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>
                     {t('lotId')}
                   </span>
                   <strong
                     id="created-lot-id-badge"
-                    style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}
+                    style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a' }}
                   >
                     {createdLot.id}
                   </strong>
@@ -1665,19 +2507,40 @@ export const CollectorSellPage = () => {
                     background: '#ffffff',
                     border: '2px dashed #93c5fd',
                     borderRadius: '12px',
-                    padding: '0.75rem'
+                    padding: '0.65rem'
                   }}
                 >
-                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>
                     {t('materialId')}
                   </span>
                   <strong
                     id="created-material-id-badge"
-                    style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0284c7' }}
+                    style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0284c7' }}
                   >
                     {createdLot.materialId || 'MAT-0001'}
                   </strong>
                 </div>
+
+                {createdLot.priceId && (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '2px dashed #fde68a',
+                      borderRadius: '12px',
+                      padding: '0.65rem'
+                    }}
+                  >
+                    <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700, display: 'block', textTransform: 'uppercase' }}>
+                      {t('priceId')}
+                    </span>
+                    <strong
+                      id="created-price-id-badge"
+                      style={{ fontSize: '1.1rem', fontWeight: 900, color: '#d97706' }}
+                    >
+                      {createdLot.priceId}
+                    </strong>
+                  </div>
+                )}
               </div>
 
               {/* Summary Details */}
@@ -1719,11 +2582,73 @@ export const CollectorSellPage = () => {
                   <span style={{ color: '#64748b' }}>{t('selectCondition')}</span>
                   <strong>{selectedConditionObj.symbol} {t(selectedConditionObj.labelKey, selectedConditionObj.fallbackName)}</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                   <span style={{ color: '#64748b' }}>{t('confirmLocation')}</span>
                   <strong>📍 {typeof createdLot.location === 'object' ? createdLot.location.area : createdLot.location}</strong>
                 </div>
+                {createdLot.estimatedPrice && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #e2e8f0', paddingTop: '6px', marginTop: '6px' }}>
+                    <span style={{ color: '#64748b' }}>{t('estimatedFairPrice')}</span>
+                    <strong style={{ color: '#15803d' }}>
+                      ₹{createdLot.estimatedPrice} / kg
+                      {createdLot.estimatedLotValueMin && createdLot.estimatedLotValueMax && (
+                        <span style={{ fontSize: '0.8rem', color: '#0f172a', fontWeight: 700, marginLeft: '6px' }}>
+                          (₹{createdLot.estimatedLotValueMin} – ₹{createdLot.estimatedLotValueMax})
+                        </span>
+                      )}
+                    </strong>
+                  </div>
+                )}
               </div>
+
+              {/* Module 6: Step 7 Reuse Opportunity Banner */}
+              {reusePotential && (reusePotential.pathway === 'reuse' || reusePotential.pathway === 'both') && (
+                <div
+                  id="success-reuse-card"
+                  style={{
+                    background: '#fef3c7',
+                    border: '1.5px solid #fde68a',
+                    borderRadius: '12px',
+                    padding: '0.9rem',
+                    marginBottom: '1.25rem',
+                    textAlign: 'left'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#92400e', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Wrench size={15} />
+                      <span>{t('potentialReuseDesc')}</span>
+                    </span>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 800, background: '#fde68a', color: '#78350f', padding: '2px 6px', borderRadius: '4px' }}>
+                      {t('pathwayReuse')}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#78350f', margin: '0 0 8px 0' }}>
+                    {repairShopMatches.length} local repair shops are looking for components like this. You can connect directly for parts harvesting.
+                  </p>
+                  <button
+                    id="btn-success-find-shops"
+                    type="button"
+                    onClick={() => setShowRepairShopsModal(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: '#d97706',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '0.45rem 0.85rem',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Wrench size={13} />
+                    <span>{t('findRepairShops')} ({repairShopMatches.length})</span>
+                  </button>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -2226,6 +3151,36 @@ export const CollectorLotsPage = () => {
                           }}
                         >
                           {lot.materialId}
+                        </span>
+                      )}
+                      {lot.priceId && (
+                        <span
+                          className="price-id-tag"
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            fontFamily: 'monospace',
+                            color: '#d97706',
+                            background: '#fef3c7',
+                            padding: '2px 7px',
+                            borderRadius: '6px'
+                          }}
+                        >
+                          {lot.priceId}
+                        </span>
+                      )}
+                      {lot.estimatedPrice && (
+                        <span
+                          style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            color: '#15803d',
+                            background: '#dcfce7',
+                            padding: '2px 7px',
+                            borderRadius: '6px'
+                          }}
+                        >
+                          ₹{lot.estimatedLotValueMin && lot.estimatedLotValueMax ? `${lot.estimatedLotValueMin} – ₹${lot.estimatedLotValueMax}` : `${lot.estimatedPrice}/kg`}
                         </span>
                       )}
                       {lot.identificationMethod === 'demo_ai' && (

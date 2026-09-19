@@ -58,6 +58,11 @@ import {
   getDatasetStats, 
   getDatasetMetadata 
 } from '../../services/materialDatasetService';
+import { 
+  getPriceRecords, 
+  getPriceDatasetStats, 
+  getPriceDatasetMetadata 
+} from '../../services/priceDatasetService';
 
 export const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -82,6 +87,14 @@ export const AdminDashboard = () => {
   const [datasetFilterCategory, setDatasetFilterCategory] = useState('ALL');
   const [datasetSearchTerm, setDatasetSearchTerm] = useState('');
 
+  // Price Dataset State (Module 5)
+  const [priceRecords, setPriceRecords] = useState(() => getPriceRecords());
+  const [selectedPriceJson, setSelectedPriceJson] = useState(null);
+  const [priceFilterMaterial, setPriceFilterMaterial] = useState('ALL');
+  const [priceFilterSource, setPriceFilterSource] = useState('ALL');
+  const [priceFilterLocation, setPriceFilterLocation] = useState('ALL');
+  const [priceSearchTerm, setPriceSearchTerm] = useState('');
+
   const sidebarItems = [
     { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
     { id: 'collectors', label: t('collectors'), icon: Users, count: MOCK_ADMIN_COLLECTORS.length },
@@ -91,6 +104,7 @@ export const AdminDashboard = () => {
     { id: 'prices', label: t('prices'), icon: DollarSign },
     { id: 'lots', label: t('lots'), icon: Package, count: MOCK_ADMIN_LOTS.length },
     { id: 'material-dataset', label: t('materialDataset'), icon: Database, count: datasetRecords.length },
+    { id: 'price-dataset', label: t('priceDataset'), icon: IndianRupee, count: priceRecords.length },
     { id: 'transactions', label: t('transactions'), icon: FileText, count: MOCK_RECENT_TRANSACTIONS.length },
     { id: 'traceability', label: t('traceability'), icon: QrCode },
     { id: 'analytics', label: t('analytics'), icon: BarChart3 },
@@ -120,6 +134,25 @@ export const AdminDashboard = () => {
       (r.collectorId && r.collectorId.toLowerCase().includes(datasetSearchTerm.toLowerCase())) ||
       (r.materialSubcategory && r.materialSubcategory.toLowerCase().includes(datasetSearchTerm.toLowerCase()));
     return matchesCat && matchesSearch;
+  });
+
+  const priceStats = getPriceDatasetStats();
+  const priceMetadata = getPriceDatasetMetadata();
+
+  const filteredPriceRecords = priceRecords.filter((r) => {
+    const matchesMat = priceFilterMaterial === 'ALL' || r.materialCategory === priceFilterMaterial;
+    const matchesSource = priceFilterSource === 'ALL' || r.sourceType === priceFilterSource;
+    const matchesLoc = priceFilterLocation === 'ALL' || 
+      (typeof r.location === 'object' && (r.location.area === priceFilterLocation || r.location.city === priceFilterLocation)) ||
+      (typeof r.location === 'string' && r.location === priceFilterLocation);
+    const matchesSearch = !priceSearchTerm.trim() ||
+      (r.priceId && r.priceId.toLowerCase().includes(priceSearchTerm.toLowerCase())) ||
+      (r.lotId && r.lotId.toLowerCase().includes(priceSearchTerm.toLowerCase())) ||
+      (r.materialId && r.materialId.toLowerCase().includes(priceSearchTerm.toLowerCase())) ||
+      (r.materialCategory && r.materialCategory.toLowerCase().includes(priceSearchTerm.toLowerCase())) ||
+      (r.materialSubcategory && r.materialSubcategory.toLowerCase().includes(priceSearchTerm.toLowerCase())) ||
+      (typeof r.location === 'object' && ((r.location.area && r.location.area.toLowerCase().includes(priceSearchTerm.toLowerCase())) || (r.location.city && r.location.city.toLowerCase().includes(priceSearchTerm.toLowerCase()))));
+    return matchesMat && matchesSource && matchesLoc && matchesSearch;
   });
 
   return (
@@ -844,7 +877,7 @@ export const AdminDashboard = () => {
                 </div>
                 <div>{t('datasetLimitations')}</div>
                 <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
-                  <strong>Collection Method:</strong> {datasetMetadata.collectionMethod} | <strong>Price Estimation:</strong> Deferred to Module 5 (all values currently null).
+                  <strong>Collection Method:</strong> {datasetMetadata.collectionMethod} | <strong>Price Estimation:</strong> Integrated via Module 5 Price Intelligence layer.
                 </div>
               </div>
 
@@ -1092,6 +1125,371 @@ export const AdminDashboard = () => {
                     </pre>
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
                       <Button variant="primary" size="sm" onClick={() => setSelectedRecordJson(null)}>
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Modal>
+            </div>
+          )}
+
+          {/* =========================================================================
+              VIEW 7B: PRICE DATASET (SIH26229 Price Dataset Governance)
+              ========================================================================= */}
+          {activeSection === 'price-dataset' && (
+            <div>
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>
+                      📊 {t('priceDataset')} (SIH)
+                    </h2>
+                    <Badge variant="success">v{priceMetadata.datasetVersion}</Badge>
+                    <Badge variant="warning">Historical Benchmark + Estimate</Badge>
+                  </div>
+                  <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px', marginBottom: 0 }}>
+                    {t('priceDatasetSubtitle')} • {priceMetadata.source}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Download}
+                    onClick={() => {
+                      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(priceRecords, null, 2));
+                      const downloadAnchor = document.createElement('a');
+                      downloadAnchor.setAttribute("href", dataStr);
+                      downloadAnchor.setAttribute("download", "scrapsetu_price_dataset.json");
+                      document.body.appendChild(downloadAnchor);
+                      downloadAnchor.click();
+                      downloadAnchor.remove();
+                    }}
+                  >
+                    Export Price JSON
+                  </Button>
+                </div>
+              </div>
+
+              {/* SIH Limitations & Methodology Disclaimer */}
+              <div
+                style={{
+                  padding: '0.85rem 1.25rem',
+                  borderRadius: '10px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  marginBottom: '1.5rem',
+                  fontSize: '0.82rem',
+                  color: '#475569',
+                  lineHeight: 1.5
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>
+                  <AlertCircle size={15} color="#d97706" />
+                  <span>SIH Price Dataset Methodology & Disclaimer:</span>
+                </div>
+                <div>{t('priceDatasetLimitations')}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>
+                  <strong>Source Types:</strong> <code>demo_seed</code> (calibrated regional benchmarks) and <code>platform_estimate</code> (collector lot valuations). | <strong>Price Fields:</strong> Distinct separation between <code>estimatedPrice</code>, <code>buyingPrice</code>, <code>quotedPrice</code>, and <code>sellingPrice</code>.
+                </div>
+              </div>
+
+              {/* 5 Metric KPI Cards */}
+              <div className="grid-cols-5" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: '1.75rem', gap: '1rem' }}>
+                <Card style={{ borderLeft: '4px solid #0f172a' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('totalRecords')}
+                    </span>
+                    <Database size={17} color="#0f172a" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0f172a' }}>
+                    {priceStats.totalRecords}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                    Sequential PRICE IDs
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #6366f1' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('sourceTypeDemoSeed')}
+                    </span>
+                    <Clock size={17} color="#6366f1" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#6366f1' }}>
+                    {priceStats.seedCount}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>
+                    Historical baseline records
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #15803d' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('sourceTypePlatformEstimate')}
+                    </span>
+                    <IndianRupee size={17} color="#15803d" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#15803d' }}>
+                    {priceStats.platformEstimateCount}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
+                    Live lot estimations
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #0284c7' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('materialsCovered')}
+                    </span>
+                    <Layers size={17} color="#0284c7" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0284c7' }}>
+                    {priceStats.materialsCoveredCount}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 600 }}>
+                    E-waste material types
+                  </span>
+                </Card>
+
+                <Card style={{ borderLeft: '4px solid #f59e0b' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                      {t('locationsCovered')}
+                    </span>
+                    <MapPin size={17} color="#f59e0b" />
+                  </div>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f59e0b' }}>
+                    {priceStats.locationsCoveredCount}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: '#f59e0b', fontWeight: 600 }}>
+                    Odisha regional centers
+                  </span>
+                </Card>
+              </div>
+
+              {/* Filters & Search */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '220px', position: 'relative' }}>
+                  <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="text"
+                    placeholder="Search PRICE ID, Lot, Material, City..."
+                    value={priceSearchTerm}
+                    onChange={(e) => setPriceSearchTerm(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 1rem 0.65rem 2.25rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.88rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                <select
+                  value={priceFilterMaterial}
+                  onChange={(e) => setPriceFilterMaterial(e.target.value)}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    background: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">All Materials</option>
+                  <option value="Electronic Components">Electronic Components (PCB)</option>
+                  <option value="Cables & Wires">Cables & Wires</option>
+                  <option value="Batteries">Batteries</option>
+                  <option value="Motors & Compressors">Motors & Compressors</option>
+                  <option value="Display Units">Display Units</option>
+                  <option value="Telecom & Mobile">Telecom & Mobile</option>
+                  <option value="IT Equipment">IT Equipment</option>
+                </select>
+
+                <select
+                  value={priceFilterSource}
+                  onChange={(e) => setPriceFilterSource(e.target.value)}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    background: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">All Sources</option>
+                  <option value="demo_seed">Demo Seed Data</option>
+                  <option value="platform_estimate">Platform Estimate</option>
+                </select>
+
+                <select
+                  value={priceFilterLocation}
+                  onChange={(e) => setPriceFilterLocation(e.target.value)}
+                  style={{
+                    padding: '0.65rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    background: '#ffffff',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="ALL">All Locations</option>
+                  <option value="Gunupur">Gunupur</option>
+                  <option value="Rayagada">Rayagada</option>
+                  <option value="Berhampur">Berhampur</option>
+                  <option value="Bhubaneswar">Bhubaneswar</option>
+                </select>
+              </div>
+
+              {/* Table Card */}
+              <Card style={{ padding: '0', overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.86rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                        <th style={{ padding: '0.85rem 1rem' }}>Price ID</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Lot Ref</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Material ID</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Category</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Subcategory</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Location</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Est. Price (₹/kg)</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Buying Price</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Quoted Price</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Selling Price</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Source Type</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Recorded At</th>
+                        <th style={{ padding: '0.85rem 1rem' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredPriceRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={13} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                            No price dataset records match the current filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredPriceRecords.map((p) => {
+                          const locStr = typeof p.location === 'object'
+                            ? (p.location.area ? `${p.location.area}, ${p.location.city || ''}` : p.location.city || 'Odisha')
+                            : String(p.location || '—');
+
+                          return (
+                            <tr key={p.priceId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', fontWeight: 800, color: '#d97706' }}>
+                                {p.priceId}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', color: '#475569' }}>
+                                {p.lotId || '—'}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', fontFamily: 'monospace', color: '#0284c7' }}>
+                                {p.materialId || '—'}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>
+                                {p.materialCategory}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', color: '#475569' }}>
+                                {p.materialSubcategory || '—'}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', color: '#334155', fontSize: '0.82rem' }}>
+                                📍 {locStr}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', fontWeight: 800, color: '#15803d' }}>
+                                {p.estimatedPrice !== null && p.estimatedPrice !== undefined ? `₹${p.estimatedPrice}` : '—'}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
+                                {p.buyingPrice !== null && p.buyingPrice !== undefined ? `₹${p.buyingPrice}` : '—'}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
+                                {p.quotedPrice !== null && p.quotedPrice !== undefined ? `₹${p.quotedPrice}` : '—'}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', color: '#64748b' }}>
+                                {p.sellingPrice !== null && p.sellingPrice !== undefined ? `₹${p.sellingPrice}` : '—'}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem' }}>
+                                <span
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    background: p.sourceType === 'demo_seed' ? '#ede9fe' : '#dcfce7',
+                                    color: p.sourceType === 'demo_seed' ? '#6d28d9' : '#15803d'
+                                  }}
+                                >
+                                  {p.sourceType === 'demo_seed' ? 'Demo Seed' : 'Platform Est.'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', color: '#64748b' }}>
+                                {new Date(p.recordedAt).toLocaleString()}
+                              </td>
+                              <td style={{ padding: '0.85rem 1rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPriceJson(p)}
+                                  style={{
+                                    padding: '3px 8px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#d97706',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  JSON
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* Modal to view complete structured Price JSON record */}
+              <Modal
+                isOpen={!!selectedPriceJson}
+                onClose={() => setSelectedPriceJson(null)}
+                title={`SIH Price Record: ${selectedPriceJson?.priceId}`}
+              >
+                {selectedPriceJson && (
+                  <div>
+                    <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '0.75rem' }}>
+                      Structured SIH Price Dataset JSON entity with provenance and pricing distinctions.
+                    </p>
+                    <pre
+                      style={{
+                        background: '#0f172a',
+                        color: '#fde047',
+                        padding: '1rem',
+                        borderRadius: '8px',
+                        fontSize: '0.8rem',
+                        overflowX: 'auto',
+                        maxHeight: '400px'
+                      }}
+                    >
+                      {JSON.stringify(selectedPriceJson, null, 2)}
+                    </pre>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+                      <Button variant="primary" size="sm" onClick={() => setSelectedPriceJson(null)}>
                         Close
                       </Button>
                     </div>

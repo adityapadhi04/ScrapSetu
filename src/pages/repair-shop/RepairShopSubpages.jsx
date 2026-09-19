@@ -40,6 +40,7 @@ import {
   MOCK_REPAIR_SHOP_PURCHASES,
   MOCK_COLLECTOR_TRANSACTIONS
 } from '../../data/mockData';
+import { getWantedItems, createWantedItem, deleteWantedItem } from '../../services/repairShopService';
 
 /**
  * Reusable Repair Shop Navigation Bar
@@ -243,29 +244,49 @@ export const RepairShopComponentsPage = () => {
 export const RepairShopWantedPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const [wantedItems, setWantedItems] = useState(MOCK_REPAIR_SHOP_WANTED);
+  const [wantedItems, setWantedItems] = useState(() => {
+    const items = getWantedItems('SHOP-0002');
+    return items.length > 0 ? items : getWantedItems();
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState('');
+  const [newCategory, setNewCategory] = useState('Laptop / Computer');
+  const [newSubcategory, setNewSubcategory] = useState('');
+  const [newCondition, setNewCondition] = useState('Good');
+  const [newQuantity, setNewQuantity] = useState('5');
   const [newPrice, setNewPrice] = useState('');
 
   const handleCreate = (e) => {
     e.preventDefault();
     if (!newTitle) return;
-    const item = {
-      id: `WANT-0${wantedItems.length + 1}`,
-      name: newTitle,
-      category: newCategory || newTitle,
-      conditionNeeded: 'Tested / Working',
-      offeringPrice: newPrice || 'Market Rate',
-      matchesFound: 1,
-      urgency: 'Active Demand'
-    };
-    setWantedItems([item, ...wantedItems]);
+    try {
+      const created = createWantedItem({
+        repairShopId: 'SHOP-0002',
+        name: newTitle,
+        materialCategory: newCategory || 'Laptop / Computer',
+        materialSubcategory: newSubcategory || newTitle,
+        preferredCondition: newCondition || 'Good',
+        quantityNeeded: parseInt(newQuantity, 10) || 5,
+        offeringPrice: newPrice || 'Market Rate',
+        location: 'Lamington Road, Mumbai',
+        urgency: 'Active Demand'
+      });
+      setWantedItems([created, ...wantedItems]);
+    } catch (err) {
+      console.error('Failed to create wanted item:', err);
+    }
     setIsModalOpen(false);
     setNewTitle('');
-    setNewCategory('');
+    setNewCategory('Laptop / Computer');
+    setNewSubcategory('');
+    setNewCondition('Good');
+    setNewQuantity('5');
     setNewPrice('');
+  };
+
+  const handleDelete = (id) => {
+    deleteWantedItem(id);
+    setWantedItems(wantedItems.filter((i) => i.wantedId !== id && i.id !== id));
   };
 
   return (
@@ -293,18 +314,18 @@ export const RepairShopWantedPage = () => {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           {wantedItems.map((item) => (
-            <Card key={item.id} style={{ padding: '1.25rem', border: '1.5px solid #fef3c7', background: '#ffffff' }}>
+            <Card key={item.wantedId || item.id} style={{ padding: '1.25rem', border: '1.5px solid #fef3c7', background: '#ffffff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#fffbeb', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                      {item.id}
+                      {item.wantedId || item.id}
                     </span>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{item.name}</h3>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{item.name || item.materialCategory}</h3>
                     <Badge variant="warning">{item.urgency || 'Active Demand'}</Badge>
                   </div>
                   <p style={{ fontSize: '0.85rem', color: '#475569', marginTop: '4px' }}>
-                    Specification: <strong>{item.category}</strong> • Condition: <strong>{item.conditionNeeded}</strong>
+                    Category: <strong>{item.materialCategory || item.category}</strong> • Specs: <strong>{item.materialSubcategory || item.category}</strong> • Condition: <strong>{item.preferredCondition || item.conditionNeeded}</strong>
                   </p>
                 </div>
 
@@ -312,22 +333,39 @@ export const RepairShopWantedPage = () => {
                   <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Target Budget</span>
                   <strong style={{ fontSize: '1.2rem', color: '#d97706' }}>{item.offeringPrice}</strong>
                   <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 700, display: 'block' }}>
-                    ⚡ {item.matchesFound} Collector Lots Matched
+                    ⚡ {item.matchesFound || 1} Collector Lots Matched
                   </span>
                 </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid #fef3c7' }}>
                 <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                  Broadcast active across 10 km radius in Mumbai
+                  Broadcast active in {item.location || 'Local Area'} ({item.quantityNeeded || 5} units needed)
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => alert(`Showing ${item.matchesFound} local collectors matching "${item.name}" (Demo)`)}
-                >
-                  View Matched Collector Lots ({item.matchesFound})
-                </Button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(item.wantedId || item.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#dc2626',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: '4px 8px'
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => alert(`Showing ${item.matchesFound || 1} local collectors matching "${item.name || item.materialCategory}" (Demo)`)}
+                  >
+                    View Matched Collector Lots ({item.matchesFound || 1})
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}
@@ -343,6 +381,35 @@ export const RepairShopWantedPage = () => {
             <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
               Broadcast specific parts required for your repair shop. Collectors nearby will receive notifications to salvage these items.
             </p>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                Material Category (सामग्री श्रेणी)
+              </label>
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.75rem',
+                  fontSize: '0.9rem',
+                  borderRadius: '8px',
+                  border: '1.5px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#0f172a',
+                  outline: 'none'
+                }}
+              >
+                <option value="Laptop / Computer">Laptop / Computer</option>
+                <option value="Mobile Phone">Mobile Phone</option>
+                <option value="LCD / Display">LCD / Display</option>
+                <option value="PCB">Printed Circuit Board (PCB)</option>
+                <option value="Motor">Electric Motor / Transformer</option>
+                <option value="Cable">Wires & Cables</option>
+                <option value="Other E-waste">Other E-waste</option>
+              </select>
+            </div>
+
             <Input
               label="Component Name (e.g. Laptop Display, Mobile Components, SMPS)"
               placeholder="e.g. Laptop RAM (DDR4)"
@@ -353,9 +420,59 @@ export const RepairShopWantedPage = () => {
             <Input
               label="Specification / Model Details"
               placeholder="e.g. 8GB 3200MHz SODIMM"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
+              value={newSubcategory}
+              onChange={(e) => setNewSubcategory(e.target.value)}
             />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Preferred Condition
+                </label>
+                <select
+                  value={newCondition}
+                  onChange={(e) => setNewCondition(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.75rem',
+                    fontSize: '0.9rem',
+                    borderRadius: '8px',
+                    border: '1.5px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="Good">Good (Intact / Working)</option>
+                  <option value="Fair">Fair (Salvageable / Tested)</option>
+                  <option value="Any">Any Condition (Parts Extraction)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Quantity Needed
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={newQuantity}
+                  onChange={(e) => setNewQuantity(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem 0.75rem',
+                    fontSize: '0.9rem',
+                    borderRadius: '8px',
+                    border: '1.5px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    outline: 'none'
+                  }}
+                  required
+                />
+              </div>
+            </div>
+
             <Input
               label="Offering Price / Budget"
               placeholder="e.g. ₹500 – ₹800 / piece"
