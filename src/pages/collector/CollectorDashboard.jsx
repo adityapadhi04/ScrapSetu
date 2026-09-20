@@ -14,7 +14,8 @@ import {
   TrendingUp,
   X,
   Recycle,
-  Wrench
+  Wrench,
+  Truck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -224,6 +225,38 @@ export const CollectorDashboard = () => {
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#991b1b' }}>
                 {t('safetyGuidelines', 'Safety Guidelines')}
+              </p>
+            </Card>
+
+            {/* 5. Book Home Pickup — Module 17 */}
+            <Card
+              interactive
+              onClick={() => navigate('/collector/book-pickup')}
+              style={{ padding: '1.1rem 1rem', background: '#eff6ff', border: '1.5px solid #bfdbfe' }}
+              id="dashboard-card-book-pickup"
+            >
+              <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>🏠</div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#1d4ed8', marginBottom: '2px' }}>
+                Book Pickup
+              </h3>
+              <p style={{ fontSize: '0.78rem', color: '#1e40af' }}>
+                Nearby Kabadiwala
+              </p>
+            </Card>
+
+            {/* 6. My Pickups — Module 17 */}
+            <Card
+              interactive
+              onClick={() => navigate('/collector/pickups')}
+              style={{ padding: '1.1rem 1rem', background: '#f0fdf4', border: '1.5px solid #bbf7d0' }}
+              id="dashboard-card-my-pickups"
+            >
+              <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>🚛</div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#15803d', marginBottom: '2px' }}>
+                My Pickups
+              </h3>
+              <p style={{ fontSize: '0.78rem', color: '#166534' }}>
+                Track Kabadiwala visits
               </p>
             </Card>
           </div>

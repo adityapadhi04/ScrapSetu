@@ -17,7 +17,9 @@ import {
   Eye, 
   EyeOff, 
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  Home,
+  Truck
 } from 'lucide-react';
 import { useAuth, ROLES } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -45,6 +47,28 @@ export const AccountSwitcher = ({ dropup = true, style = {} }) => {
   const modalContentRef = useRef(null);
 
   const accountOptions = [
+    {
+      key: ROLES.CUSTOMER,
+      nameKey: 'customerName',
+      defaultName: 'Household Customer',
+      iconPrefix: '🏠',
+      Icon: Home,
+      path: '/customer',
+      color: '#059669',
+      bg: '#d1fae5',
+      email: DEMO_USERS.customer.email
+    },
+    {
+      key: ROLES.KABADIWALA,
+      nameKey: 'kabadiwalaName',
+      defaultName: 'Local Kabadiwala',
+      iconPrefix: '🚛',
+      Icon: Truck,
+      path: '/kabadiwala',
+      color: '#d97706',
+      bg: '#fef3c7',
+      email: DEMO_USERS.kabadiwala.email
+    },
     {
       key: ROLES.COLLECTOR,
       nameKey: 'collectorName',

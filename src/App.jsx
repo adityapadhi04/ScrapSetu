@@ -16,13 +16,24 @@ import {
 } from './pages/collector/CollectorSubpages';
 import SafetyPage from './pages/collector/SafetyPage';
 import CollectorInsightsPage from './pages/collector/CollectorInsightsPage';
+import {
+  CollectorBookPickupPage,
+  CollectorPickupTrackingPage
+} from './pages/collector/CollectorKabadiPages';
+import {
+  CustomerDashboard,
+  CustomerBookPickupPage,
+  CustomerBookingsPage
+} from './pages/customer/CustomerPages';
+import KabadiwalaDashboard from './pages/kabadiwala/KabadiwalaDashboard';
 import RecyclerDashboard from './pages/recycler/RecyclerDashboard';
 import {
   RecyclerLotsPage,
   RecyclerPickupsPage,
   RecyclerOffersPage,
   RecyclerOrdersPage,
-  RecyclerProfilePage
+  RecyclerProfilePage,
+  RecyclerReceiptsPage
 } from './pages/recycler/RecyclerSubpages';
 import RepairShopDashboard from './pages/repair-shop/RepairShopDashboard';
 import {
@@ -31,7 +42,8 @@ import {
   RepairShopOffersPage,
   RepairShopPurchasesPage,
   RepairShopTransactionsPage,
-  RepairShopProfilePage
+  RepairShopProfilePage,
+  RepairShopReceiptsPage
 } from './pages/repair-shop/RepairShopSubpages';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import SyncStatusPage from './pages/shared/SyncStatusPage';
@@ -54,6 +66,19 @@ function AppLayout() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
 
+          {/* 0. Customer Protected Routes */}
+          <Route element={<ProtectedRoute allowedRoles={['customer']} />}>
+            <Route path="/customer" element={<CustomerDashboard />} />
+            <Route path="/customer/book-pickup" element={<CustomerBookPickupPage />} />
+            <Route path="/customer/bookings" element={<CustomerBookingsPage />} />
+          </Route>
+
+          {/* 0.1. Kabadiwala Protected Routes */}
+          <Route element={<ProtectedRoute allowedRoles={['kabadiwala', 'collector']} />}>
+            <Route path="/kabadiwala" element={<KabadiwalaDashboard />} />
+            <Route path="/kabadiwala/pickups" element={<KabadiwalaDashboard />} />
+          </Route>
+
           {/* 1. Collector Protected Routes */}
           <Route element={<ProtectedRoute allowedRoles={['collector']} />}>
             <Route path="/collector" element={<CollectorDashboard />} />
@@ -64,6 +89,8 @@ function AppLayout() {
             <Route path="/collector/profile" element={<CollectorProfilePage />} />
             <Route path="/collector/safety" element={<SafetyPage />} />
             <Route path="/collector/insights" element={<CollectorInsightsPage />} />
+            <Route path="/collector/book-pickup" element={<CollectorBookPickupPage />} />
+            <Route path="/collector/pickups" element={<CollectorPickupTrackingPage />} />
           </Route>
 
           {/* 2. Recycler Protected Routes */}
@@ -74,6 +101,7 @@ function AppLayout() {
             <Route path="/recycler/offers" element={<RecyclerOffersPage />} />
             <Route path="/recycler/orders" element={<RecyclerOrdersPage />} />
             <Route path="/recycler/profile" element={<RecyclerProfilePage />} />
+            <Route path="/recycler/receipts" element={<RecyclerReceiptsPage />} />
           </Route>
 
           {/* 3. Repair Shop Protected Routes */}
@@ -85,6 +113,7 @@ function AppLayout() {
             <Route path="/repair-shop/purchases" element={<RepairShopPurchasesPage />} />
             <Route path="/repair-shop/transactions" element={<RepairShopTransactionsPage />} />
             <Route path="/repair-shop/profile" element={<RepairShopProfilePage />} />
+            <Route path="/repair-shop/receipts" element={<RepairShopReceiptsPage />} />
           </Route>
 
           {/* 4. Admin Protected Routes */}
@@ -93,7 +122,7 @@ function AppLayout() {
           </Route>
 
           {/* 5. Shared: Sync Status — accessible to all authenticated roles */}
-          <Route element={<ProtectedRoute allowedRoles={['collector', 'recycler', 'repair', 'repair-shop', 'admin']} />}>
+          <Route element={<ProtectedRoute allowedRoles={['customer', 'kabadiwala', 'collector', 'recycler', 'repair', 'repair-shop', 'admin']} />}>
             <Route path="/sync-status" element={<SyncStatusPage />} />
           </Route>
 

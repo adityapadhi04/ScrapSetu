@@ -91,5 +91,46 @@ export const SEED_HANDOVERS = [
 
     version: '1.0',
     sourceType: 'demo_seed'
+  },
+  {
+    handoverId: 'HAND-0003',
+    transactionId: 'TXN-0003',
+    lotId: 'LOT-0001',
+
+    collectorId: 'usr-collector-01',
+    buyerId: 'usr-repair-01',
+    buyerRole: 'repair',
+
+    materialCategory: 'PCB',
+    weight: 2.4,
+    weightUnit: 'kg',
+
+    handoverMethod: 'collector_delivers',
+
+    pickupLocation: {
+      area: 'Dharavi Sector 3',
+      city: 'Mumbai',
+      state: 'Maharashtra'
+    },
+    handoverLocation: {
+      area: 'Lamington Road',
+      city: 'Mumbai',
+      state: 'Maharashtra'
+    },
+
+    collectorConfirmed: true,
+    buyerConfirmed: true,
+
+    handoverStatus: 'confirmed',
+
+    handoverDate: '2026-09-20T10:00:00.000Z',
+
+    notes: 'Collector delivered PCB scrap directly to repair shop. Handover verified.',
+
+    createdAt: '2026-09-20T09:30:00.000Z',
+    updatedAt: '2026-09-20T10:00:00.000Z',
+
+    version: '1.0',
+    sourceType: 'demo_seed'
   }
 ];

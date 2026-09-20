@@ -57,7 +57,20 @@ export const initializePickups = () => {
       return [...SEED_PICKUPS];
     }
     const parsed = JSON.parse(existing);
-    return Array.isArray(parsed) ? parsed : [...SEED_PICKUPS];
+    if (Array.isArray(parsed)) {
+      let changed = false;
+      for (const seed of SEED_PICKUPS) {
+        if (!parsed.some((p) => p.pickupId === seed.pickupId)) {
+          parsed.push(seed);
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem(STORAGE_KEY_PICKUPS, JSON.stringify(parsed));
+      }
+      return parsed;
+    }
+    return [...SEED_PICKUPS];
   } catch (err) {
     console.error('[pickupService] Error initializing pickups storage:', err);
     return [...SEED_PICKUPS];

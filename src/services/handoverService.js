@@ -34,7 +34,20 @@ export const initializeHandovers = () => {
       return [...SEED_HANDOVERS];
     }
     const parsed = JSON.parse(existing);
-    return Array.isArray(parsed) ? parsed : [...SEED_HANDOVERS];
+    if (Array.isArray(parsed)) {
+      let changed = false;
+      for (const seed of SEED_HANDOVERS) {
+        if (!parsed.some((h) => h.handoverId === seed.handoverId)) {
+          parsed.push(seed);
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem(STORAGE_KEY_HANDOVERS, JSON.stringify(parsed));
+      }
+      return parsed;
+    }
+    return [...SEED_HANDOVERS];
   } catch (err) {
     console.error('Error initializing scrapsetu_handovers:', err);
     return [...SEED_HANDOVERS];

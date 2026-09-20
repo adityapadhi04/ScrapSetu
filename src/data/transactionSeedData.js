@@ -93,5 +93,46 @@ export const SEED_TRANSACTIONS = [
     createdAt: '2026-09-19T16:00:00.000Z',
     updatedAt: '2026-09-19T16:00:00.000Z',
     datasetVersion: '1.0'
+  },
+  {
+    transactionId: 'TXN-0003',
+    offerId: 'OFR-0001',
+    lotId: 'LOT-0001',
+
+    collectorId: 'usr-collector-01',
+    collectorName: 'Demo Collector (Informal)',
+
+    buyerId: 'usr-repair-01',
+    buyerRole: 'repair',
+    buyerName: 'Om Electronics & Laptop Care',
+
+    materialCategory: 'PCB',
+    materialSubcategory: 'Computer Motherboard Scrap',
+
+    weight: 2.4,
+    weightUnit: 'kg',
+
+    agreedPrice: 770.83,
+    priceUnit: 'kg',
+    totalAmount: 1850,
+
+    currency: 'INR',
+
+    transactionStatus: 'payment_pending',
+
+    paymentStatus: 'pending',
+    paymentMethod: 'Razorpay',
+
+    handoverStatus: 'confirmed',
+
+    handoverDate: '2026-09-20T10:00:00.000Z',
+    paymentDate: null,
+
+    notes: 'Handover verified at repair shop inspection bench. Payment pending via Razorpay.',
+
+    sourceType: 'demo_seed',
+    createdAt: '2026-09-20T10:00:00.000Z',
+    updatedAt: '2026-09-20T10:00:00.000Z',
+    datasetVersion: '1.0'
   }
 ];

@@ -9,6 +9,8 @@
  */
 
 export const ACCOUNT_ROLES = {
+  CUSTOMER: 'customer',
+  KABADIWALA: 'kabadiwala',
   COLLECTOR: 'collector',
   REPAIR: 'repair',
   RECYCLER: 'recycler',
@@ -16,6 +18,8 @@ export const ACCOUNT_ROLES = {
 };
 
 export const ROLE_PATHS = {
+  customer: '/customer',
+  kabadiwala: '/kabadiwala',
   collector: '/collector',
   repair: '/repair-shop',
   recycler: '/recycler',
@@ -23,6 +27,44 @@ export const ROLE_PATHS = {
 };
 
 export const DEMO_USERS = {
+  customer: {
+    id: 'usr-customer-01',
+    email: 'customer@scrapsetu.demo',
+    password: 'customer123',
+    name: 'Pooja Verma',
+    displayName: 'Household Customer',
+    roleNameKey: 'customerName',
+    role: 'customer',
+    dashboardPath: '/customer',
+    iconPrefix: '🏠',
+    badgeVariant: 'primary',
+    themeColor: '#059669',
+    meta: {
+      phone: '+91 98112 23344',
+      area: 'Dharavi Sector 3, Mumbai',
+      address: 'Flat 402, Greenfield Apts, Dharavi'
+    }
+  },
+  kabadiwala: {
+    id: 'usr-kabadi-01',
+    kabadiId: 'KBD-001',
+    email: 'kabadi@scrapsetu.demo',
+    password: 'kabadi123',
+    name: 'Radhe Shyam',
+    displayName: 'Local Kabadiwala',
+    roleNameKey: 'kabadiwalaName',
+    role: 'kabadiwala',
+    dashboardPath: '/kabadiwala',
+    iconPrefix: '🚛',
+    badgeVariant: 'warning',
+    themeColor: '#d97706',
+    meta: {
+      kabadiId: 'KBD-001',
+      phone: '+91 98201 12345',
+      area: 'Dharavi / Kurla / Sion',
+      rating: 4.8
+    }
+  },
   collector: {
     id: 'usr-collector-01',
     email: 'collector@scrapsetu.demo',
@@ -100,11 +142,13 @@ export const DEMO_USERS = {
 
 /**
  * Normalizes any legacy or variant role string to standard lowercase:
- * 'collector' | 'repair' | 'recycler' | 'admin'
+ * 'customer' | 'kabadiwala' | 'collector' | 'repair' | 'recycler' | 'admin'
  */
 export const normalizeRole = (role) => {
   if (!role) return 'collector';
   const lower = String(role).toLowerCase().replace(/_/g, '-');
+  if (lower.includes('customer')) return 'customer';
+  if (lower.includes('kabadi')) return 'kabadiwala';
   if (lower.includes('collector')) return 'collector';
   if (lower.includes('repair')) return 'repair';
   if (lower.includes('recycler')) return 'recycler';

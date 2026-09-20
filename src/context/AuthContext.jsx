@@ -11,6 +11,8 @@ import { isOnline as checkOnline, subscribeToConnectivity } from '../services/of
 import { initSyncEngine } from '../services/syncEngine';
 
 export const ROLES = {
+  CUSTOMER: 'customer',
+  KABADIWALA: 'kabadiwala',
   COLLECTOR: 'collector',
   REPAIR_SHOP: 'repair',
   REPAIR: 'repair',
@@ -19,6 +21,46 @@ export const ROLES = {
 };
 
 export const ROLE_CONFIG = {
+  customer: {
+    key: 'customer',
+    labelKey: 'customerName',
+    label: 'Household Customer',
+    vernacularLabel: 'घरगुती ग्राहक / नागरिक',
+    badgeVariant: 'primary',
+    path: '/customer',
+    themeColor: '#059669',
+    demoUser: DEMO_USERS.customer
+  },
+  CUSTOMER: {
+    key: 'customer',
+    labelKey: 'customerName',
+    label: 'Household Customer',
+    vernacularLabel: 'घरगुती ग्राहक / नागरिक',
+    badgeVariant: 'primary',
+    path: '/customer',
+    themeColor: '#059669',
+    demoUser: DEMO_USERS.customer
+  },
+  kabadiwala: {
+    key: 'kabadiwala',
+    labelKey: 'kabadiwalaName',
+    label: 'Local Kabadiwala',
+    vernacularLabel: 'स्थानिक कबाड़ीवाला',
+    badgeVariant: 'warning',
+    path: '/kabadiwala',
+    themeColor: '#d97706',
+    demoUser: DEMO_USERS.kabadiwala
+  },
+  KABADIWALA: {
+    key: 'kabadiwala',
+    labelKey: 'kabadiwalaName',
+    label: 'Local Kabadiwala',
+    vernacularLabel: 'स्थानिक कबाड़ीवाला',
+    badgeVariant: 'warning',
+    path: '/kabadiwala',
+    themeColor: '#d97706',
+    demoUser: DEMO_USERS.kabadiwala
+  },
   collector: {
     key: 'collector',
     labelKey: 'collectorName',

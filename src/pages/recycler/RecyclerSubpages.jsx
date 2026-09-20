@@ -37,17 +37,20 @@ import {
 import { getRecyclerById, getActiveRecyclers } from '../../services/recyclerService';
 import { getOffersForBuyer } from '../../services/offerService';
 import { getTransactionsByBuyer } from '../../services/transactionService';
-import { 
+import {
   createHandover,
   confirmBuyerReceipt,
-  getHandoversByTransaction 
+  getHandoversByTransaction
 } from '../../services/handoverService';
-import { 
+import {
   createPaymentRecord,
   getPaymentsByTransaction,
-  VALID_PAYMENT_METHODS 
+  VALID_PAYMENT_METHODS
 } from '../../services/paymentService';
 import DigitalScrapReceipt from '../../components/transactions/DigitalScrapReceipt';
+import PaymentReceiptModal from '../../components/payment/PaymentReceiptModal';
+import PaymentReceiptsPageShared from '../../components/payment/PaymentReceiptsPage';
+import { getReceiptByTransaction } from '../../services/paymentReceiptService';
 
 /**
  * Reusable Recycler Navigation Bar
@@ -60,6 +63,7 @@ export const RecyclerNavBar = () => {
     { label: `🚚 ${t('pickupRequests')}`, path: '/recycler/pickups' },
     { label: `💰 ${t('offers')}`, path: '/recycler/offers' },
     { label: `📋 ${t('orders')}`, path: '/recycler/orders' },
+    { label: `📎 Payment Receipts`, path: '/recycler/receipts' },
     { label: `👤 ${t('profile')}`, path: '/recycler/profile' },
   ];
 
@@ -635,6 +639,9 @@ export const RecyclerOrdersPage = () => {
   const [paymentRefNote, setPaymentRefNote] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
+  // Receipt upload modal state (Module 16)
+  const [receiptUploadTx, setReceiptUploadTx] = useState(null);
+
   const refreshList = () => {
     setTransactions(getTransactionsByBuyer(activeRecyclerId));
   };
@@ -779,6 +786,19 @@ export const RecyclerOrdersPage = () => {
                             {t('recordPayment')}
                           </Button>
                         )}
+                        {/* Module 16: Upload Payment Receipt */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          id={`btn-rec-upload-receipt-${tx.transactionId}`}
+                          onClick={() => setReceiptUploadTx(tx)}
+                          style={{
+                            borderColor: getReceiptByTransaction(tx.transactionId) ? '#15803d' : undefined,
+                            color: getReceiptByTransaction(tx.transactionId) ? '#15803d' : undefined,
+                          }}
+                        >
+                          📎 {getReceiptByTransaction(tx.transactionId) ? 'View Receipt' : 'Upload Receipt'}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -908,8 +928,34 @@ export const RecyclerOrdersPage = () => {
           </div>
         </div>
       )}
+      {/* Upload Payment Receipt Modal (Module 16) */}
+      <PaymentReceiptModal
+        isOpen={!!receiptUploadTx}
+        onClose={() => setReceiptUploadTx(null)}
+        transaction={receiptUploadTx}
+        uploadedBy={activeRecyclerId}
+        uploadedByRole="recycler"
+        buyerName={user?.name || 'Recycler'}
+        onUploaded={() => {
+          setReceiptUploadTx(null);
+          refreshList();
+        }}
+      />
       <MobileBottomNav role="RECYCLER" />
     </div>
+  );
+};
+
+/**
+ * Recycler Payment Receipts Page (/recycler/receipts) — Module 16
+ */
+export const RecyclerReceiptsPage = () => {
+  return (
+    <PaymentReceiptsPageShared
+      role="recycler"
+      backPath="/recycler/orders"
+      NavBar={RecyclerNavBar}
+    />
   );
 };
 

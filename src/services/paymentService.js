@@ -2,23 +2,24 @@
  * ScrapSetu — Payment Service (Module 9: Transaction + Digital Handover + Payment Record)
  *
  * Records payment information for completed scrap transactions.
- * Supports Cash, UPI, Bank Transfer, and Other methods.
+ * Supports Cash, UPI, Bank Transfer, Other methods, and Cashfree Gateway.
  *
  * Persisted in localStorage under STORAGE_KEY_PAYMENTS ("scrapsetu_payments").
  * Sequential IDs: PAY-0001, PAY-0002, etc.
  *
  * ════════════════════════════════════════════════
- * ⚠️  CRITICAL PROTOTYPE DISCLAIMER  ⚠️
+ * Cashfree Sandbox Integration (Module 15)
  * ════════════════════════════════════════════════
- * This service records payment information ONLY for prototype
- * traceability and governance purposes.
+ * Payments via Cashfree Sandbox are verified by the backend.
+ * Frontend NEVER self-declares a payment as VERIFIED.
+ * CASHFREE_CLIENT_SECRET is only in the backend .env.
  *
- * NO real payment gateway is connected.
- * NO Razorpay, Stripe, PayPal, UPI API, or bank API is integrated.
- * NO actual money movement or settlement occurs.
- * "UPI" records only the payment method label — no real UPI verification.
- *
- * "Demo payment record — not real payment processing."
+ * Payment statuses:
+ *   recorded   — legacy demo / manual record
+ *   pending    — Cashfree order created, awaiting payment
+ *   verified   — Backend confirmed with Cashfree (ONLY backend sets this)
+ *   failed     — Payment failed at Cashfree
+ *   cancelled  — User cancelled checkout
  * ════════════════════════════════════════════════
  */
 
@@ -28,8 +29,8 @@ import { enqueue } from './syncQueueService.js';
 
 export const STORAGE_KEY_PAYMENTS = 'scrapsetu_payments';
 
-export const VALID_PAYMENT_METHODS = ['Cash', 'UPI', 'Bank Transfer', 'Other'];
-export const VALID_PAYMENT_STATUSES = ['recorded', 'failed'];
+export const VALID_PAYMENT_METHODS = ['Cash', 'UPI', 'Bank Transfer', 'Other', 'Cashfree'];
+export const VALID_PAYMENT_STATUSES = ['recorded', 'pending', 'verified', 'failed', 'cancelled'];
 
 // ─────────────────────────────────────────────
 // Storage Initialization
@@ -95,7 +96,8 @@ export const validatePayment = (data) => {
   if (!data.buyerId || typeof data.buyerId !== 'string') {
     errors.push('buyerId is required');
   }
-  if (!data.paymentMethod || !VALID_PAYMENT_METHODS.includes(data.paymentMethod)) {
+  // paymentMethod is optional for Cashfree-initiated payments (set later)
+  if (data.paymentMethod && !VALID_PAYMENT_METHODS.includes(data.paymentMethod)) {
     errors.push(`paymentMethod must be one of: ${VALID_PAYMENT_METHODS.join(', ')}`);
   }
   const amount = parseFloat(data.amount);
@@ -149,9 +151,15 @@ export const createPaymentRecord = (data) => {
     amount: parseFloat(data.amount),
     currency: data.currency || 'INR',
 
-    paymentMethod: data.paymentMethod,
+    paymentMethod: data.paymentMethod || 'Cashfree',
 
-    paymentStatus: 'recorded',
+    paymentStatus: data.paymentStatus || 'recorded',
+
+    // Cashfree-specific fields (populated after gateway verification)
+    cfOrderId: data.cfOrderId || null,
+    cfPaymentId: data.cfPaymentId || null,
+    verifiedAt: data.verifiedAt || null,
+    failureReason: data.failureReason || null,
 
     referenceNote: (data.referenceNote || '').trim(),
 
@@ -173,8 +181,8 @@ export const createPaymentRecord = (data) => {
   // Update the parent transaction paymentStatus and paymentDate
   try {
     _patchTransactionFields(data.transactionId, {
-      paymentStatus: 'recorded',
-      paymentMethod: data.paymentMethod,
+      paymentStatus: newPayment.paymentStatus,
+      paymentMethod: newPayment.paymentMethod,
       paymentDate: now
     });
     checkAndCompleteTransaction(data.transactionId);
@@ -198,6 +206,74 @@ export const createPaymentRecord = (data) => {
     }
   }
 
+  return newPayment;
+};
+
+// ─────────────────────────────────────────────
+// Cashfree Payment Update (post-verification)
+// ─────────────────────────────────────────────
+
+/**
+ * Update or create a payment record with Cashfree verification data.
+ * Called by cashfreePaymentService after backend confirms payment.
+ *
+ * SECURITY: Only the backend sets payment_status=verified.
+ * This function persists that backend truth into localStorage.
+ *
+ * @param {object} data - {paymentId, transactionId, collectorId, buyerId,
+ *                         buyerRole, amount, paymentStatus, cfOrderId,
+ *                         cfPaymentId, verifiedAt}
+ */
+export const updatePaymentWithCashfree = (data) => {
+  const payments = getPayments();
+  const now = new Date().toISOString();
+
+  // Find existing record for this transaction
+  const existingIndex = payments.findIndex(
+    (p) => p.transactionId === data.transactionId && p.paymentStatus !== 'failed'
+  );
+
+  if (existingIndex !== -1) {
+    // Update existing record
+    payments[existingIndex] = {
+      ...payments[existingIndex],
+      paymentStatus: data.paymentStatus,
+      cfOrderId: data.cfOrderId || payments[existingIndex].cfOrderId,
+      cfPaymentId: data.cfPaymentId || payments[existingIndex].cfPaymentId,
+      verifiedAt: data.verifiedAt || payments[existingIndex].verifiedAt,
+      failureReason: data.failureReason || null,
+      updatedAt: now,
+    };
+    savePayments(payments);
+    return payments[existingIndex];
+  }
+
+  // No existing record — create new one
+  const paymentId = data.paymentId || generateNextPaymentId(payments);
+  const newPayment = {
+    paymentId,
+    transactionId: data.transactionId,
+    collectorId: data.collectorId || '',
+    buyerId: data.buyerId || '',
+    buyerRole: data.buyerRole || '',
+    amount: parseFloat(data.amount) || 0,
+    currency: 'INR',
+    paymentMethod: 'Cashfree',
+    paymentStatus: data.paymentStatus,
+    cfOrderId: data.cfOrderId || null,
+    cfPaymentId: data.cfPaymentId || null,
+    verifiedAt: data.verifiedAt || null,
+    failureReason: data.failureReason || null,
+    referenceNote: 'Cashfree Sandbox payment',
+    paidAt: data.verifiedAt || now,
+    recordedBy: data.collectorId || 'system',
+    sourceType: 'cashfree_gateway',
+    createdAt: now,
+    updatedAt: now,
+    version: '1.0',
+  };
+  payments.push(newPayment);
+  savePayments(payments);
   return newPayment;
 };
 
@@ -231,17 +307,22 @@ export const getPaymentsByBuyer = (buyerId) => {
 
 export const getPaymentStats = () => {
   const payments = getPayments();
-  const totalValue = payments
-    .filter((p) => p.paymentStatus === 'recorded')
-    .reduce((sum, p) => sum + (p.amount || 0), 0);
+  const completedPayments = payments.filter(
+    (p) => p.paymentStatus === 'recorded' || p.paymentStatus === 'verified'
+  );
+  const totalValue = completedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
   return {
     total: payments.length,
     recorded: payments.filter((p) => p.paymentStatus === 'recorded').length,
+    verified: payments.filter((p) => p.paymentStatus === 'verified').length,
+    pending: payments.filter((p) => p.paymentStatus === 'pending').length,
     failed: payments.filter((p) => p.paymentStatus === 'failed').length,
+    cancelled: payments.filter((p) => p.paymentStatus === 'cancelled').length,
     totalValue,
     byCashCount: payments.filter((p) => p.paymentMethod === 'Cash').length,
     byUPICount: payments.filter((p) => p.paymentMethod === 'UPI').length,
-    byBankTransferCount: payments.filter((p) => p.paymentMethod === 'Bank Transfer').length
+    byBankTransferCount: payments.filter((p) => p.paymentMethod === 'Bank Transfer').length,
+    byCashfreeCount: payments.filter((p) => p.paymentMethod === 'Cashfree').length,
   };
 };
 

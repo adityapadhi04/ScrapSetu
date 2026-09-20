@@ -16,7 +16,9 @@ import {
   Eye, 
   EyeOff,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Home,
+  Truck
 } from 'lucide-react';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
@@ -78,6 +80,24 @@ export const Login = () => {
   };
 
   const demoAccounts = [
+    {
+      key: 'customer',
+      labelKey: 'customerName',
+      fallback: 'Household Customer',
+      Icon: Home,
+      color: '#059669',
+      bg: '#d1fae5',
+      email: DEMO_USERS.customer.email
+    },
+    {
+      key: 'kabadiwala',
+      labelKey: 'kabadiwalaName',
+      fallback: 'Local Kabadiwala',
+      Icon: Truck,
+      color: '#d97706',
+      bg: '#fef3c7',
+      email: DEMO_USERS.kabadiwala.email
+    },
     {
       key: 'collector',
       labelKey: 'collectorName',

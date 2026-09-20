@@ -43,6 +43,7 @@ import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Input from '../../components/common/Input';
 import Select from '../../components/common/Select';
+import Modal from '../../components/common/Modal';
 import AccountSwitcher from '../../components/common/AccountSwitcher';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -68,7 +69,8 @@ import { getOffersForLot, acceptOffer } from '../../services/offerService';
 import {
   createTransaction,
   getTransactionsByCollector,
-  getCollectorEarnings
+  getCollectorEarnings,
+  getTransactionByOffer
 } from '../../services/transactionService';
 import {
   createHandover,
@@ -89,6 +91,7 @@ import {
   schedulePickup,
   cancelPickup
 } from '../../services/pickupService';
+import CashfreePaymentModal from '../../components/payment/CashfreePaymentModal';
 
 /**
  * 7-Step Mobile-First Scrap Lot Creation Wizard for Collector (Module 3)
@@ -101,7 +104,7 @@ export const CollectorSellPage = () => {
 
   const activeCollectorId = user?.userId || 'usr-collector-01';
 
-  // Wizard Step state: 1 (Photo) -> 2 (AI Identify Material) -> 3 (Weight) -> 4 (Condition) -> 5 (Location) -> 6 (Notes & Review) -> 7 (Success)
+  // Wizard Step state: 1 (Photo) -> 2 (AI Identify Material) -> 3 (Weight) -> 4 (Location) -> 5 (Notes & Review) -> 6 (Success)
   const [step, setStep] = useState(1);
 
   // Form Fields (Preserved across Back/Next navigation)
@@ -448,7 +451,7 @@ export const CollectorSellPage = () => {
     // Preserves aiSuggestedCategory, aiSuggestedSubcategory, and aiConfidenceScore for audit tracking
   };
 
-  // Step 3 Validation -> Proceed to Step 4
+  // Step 3 Validation -> Proceed to Step 4 (Location)
   const handleProceedFromWeight = () => {
     const num = parseFloat(weight);
     if (isNaN(num) || num <= 0) {
@@ -459,14 +462,14 @@ export const CollectorSellPage = () => {
     setStep(4);
   };
 
-  // Step 5 Validation -> Proceed to Step 6
+  // Step 4 Validation -> Proceed to Step 5 (Review)
   const handleProceedFromLocation = () => {
     if (!locationArea.trim()) {
       setError(t('locationRequiredWarning'));
       return;
     }
     setError('');
-    setStep(6);
+    setStep(5);
   };
 
   // Final Submission: Create Scrap Lot + Linked SIH Material Dataset Record
@@ -524,7 +527,7 @@ export const CollectorSellPage = () => {
 
         setCreatedLots(lotsCreated);
         setCreatedLot(lotsCreated[0]);
-        setStep(7);
+        setStep(6);
       } else {
         const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === materialType);
         const category = selectedMatObj?.category || 'Electronic Components';
@@ -553,7 +556,7 @@ export const CollectorSellPage = () => {
 
         setCreatedLots([newLot]);
         setCreatedLot(newLot);
-        setStep(7);
+        setStep(6);
       }
     } catch (err) {
       console.error('Failed to create scrap lot:', err);
@@ -607,7 +610,7 @@ export const CollectorSellPage = () => {
             <button
               id="wizard-back-button"
               onClick={() => {
-                if (step > 1 && step < 7) {
+                if (step > 1 && step < 6) {
                   setError('');
                   setStep(step - 1);
                 } else {
@@ -621,23 +624,23 @@ export const CollectorSellPage = () => {
               <ArrowLeft size={20} />
             </button>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 800 }}>
-              {step === 7 ? t('lotCreatedSuccess') : t('sellScrap')}
+              {step === 6 ? t('lotCreatedSuccess') : t('sellScrap')}
             </h1>
           </div>
 
-          {step < 7 && (
+          {step < 6 && (
             <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#15803d', background: '#dcfce7', padding: '3px 10px', borderRadius: '99px' }}>
-              {t('stepProgress', { step, total: 6 }).replace('{step}', step).replace('{total}', 6)}
+              {t('stepProgress', { step, total: 5 }).replace('{step}', step).replace('{total}', 5)}
             </span>
           )}
         </div>
 
         {/* Compact Progress Bar */}
-        {step < 7 && (
+        {step < 6 && (
           <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '99px', marginBottom: '1.25rem', overflow: 'hidden' }}>
             <div
               style={{
-                width: `${(step / 6) * 100}%`,
+                width: `${(step / 5) * 100}%`,
                 height: '100%',
                 background: '#15803d',
                 borderRadius: '99px',
@@ -1560,111 +1563,6 @@ export const CollectorSellPage = () => {
                   boxShadow: '0 4px 10px rgba(21, 128, 61, 0.3)'
                 }}
               >
-                <span>Next: Condition →</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* =========================================================================
-            STEP 4: SELECT CONDITION
-            ========================================================================= */}
-        {step === 4 && (
-          <div>
-            <div style={{ marginBottom: '1rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-                {t('selectCondition')}
-              </h2>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '1.5rem' }}>
-              {CONDITION_OPTIONS.map((cond) => {
-                const isSelected = condition === cond.key;
-                const condLabel = t(cond.labelKey, cond.fallbackName);
-
-                return (
-                  <button
-                    key={cond.key}
-                    type="button"
-                    onClick={() => setCondition(cond.key)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      padding: '1rem',
-                      borderRadius: '12px',
-                      border: isSelected ? `2.5px solid ${cond.color}` : '1.5px solid #e2e8f0',
-                      background: isSelected ? '#f8fafc' : '#ffffff',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.12s ease'
-                    }}
-                  >
-                    <span style={{ fontSize: '1.5rem' }}>{cond.symbol}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                        {condLabel}
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                        {cond.description}
-                      </div>
-                    </div>
-                    {isSelected && <CheckCircle size={20} color={cond.color} />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Module 11: Real-time Material & Condition Safety Guidance */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <SafetyGuidanceCard
-                materialCategory={materialType}
-                condition={condition}
-                compact={condition !== 'damaged' && condition !== 'burnt'}
-                showTransport={false}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                style={{
-                  flex: 1,
-                  padding: '0.85rem',
-                  fontSize: '0.95rem',
-                  fontWeight: 700,
-                  borderRadius: '10px',
-                  border: '1px solid #e2e8f0',
-                  background: '#ffffff',
-                  color: '#475569',
-                  cursor: 'pointer'
-                }}
-              >
-                ← {t('back')}
-              </button>
-
-              <button
-                id="btn-step4-next"
-                type="button"
-                onClick={() => setStep(5)}
-                style={{
-                  flex: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  padding: '0.85rem',
-                  fontSize: '1rem',
-                  fontWeight: 800,
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: '#15803d',
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 10px rgba(21, 128, 61, 0.3)'
-                }}
-              >
                 <span>Next: Location →</span>
               </button>
             </div>
@@ -1672,9 +1570,9 @@ export const CollectorSellPage = () => {
         )}
 
         {/* =========================================================================
-            STEP 5: CONFIRM LOCATION
+            STEP 4: CONFIRM LOCATION
             ========================================================================= */}
-        {step === 5 && (
+        {step === 4 && (
           <div>
             <Card style={{ padding: '1.5rem', marginBottom: '1.25rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.4rem' }}>
@@ -1745,7 +1643,7 @@ export const CollectorSellPage = () => {
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setStep(4)}
+                onClick={() => setStep(3)}
                 style={{
                   flex: 1,
                   padding: '0.85rem',
@@ -1762,7 +1660,7 @@ export const CollectorSellPage = () => {
               </button>
 
               <button
-                id="btn-step5-next"
+                id="btn-step4-next"
                 type="button"
                 onClick={handleProceedFromLocation}
                 style={{
@@ -1789,9 +1687,9 @@ export const CollectorSellPage = () => {
         )}
 
         {/* =========================================================================
-            STEP 6: ADDITIONAL NOTES & REVIEW
+            STEP 5: ADDITIONAL NOTES & REVIEW
             ========================================================================= */}
-        {step === 6 && (
+        {step === 5 && (
           <div>
             <div style={{ marginBottom: '1rem' }}>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
@@ -1887,24 +1785,6 @@ export const CollectorSellPage = () => {
                 </button>
               </div>
 
-              {/* Condition Row */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #f1f5f9' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>{t('selectCondition')}</span>
-                  <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>
-                    {selectedConditionObj.symbol} {t(selectedConditionObj.labelKey, selectedConditionObj.fallbackName)}
-                  </strong>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setStep(4)}
-                  style={{ background: 'none', border: 'none', color: '#15803d', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
-                >
-                  <Edit3 size={14} />
-                  <span>{t('edit')}</span>
-                </button>
-              </div>
-
               {/* Location Row */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0' }}>
                 <div>
@@ -1915,7 +1795,7 @@ export const CollectorSellPage = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setStep(5)}
+                  onClick={() => setStep(4)}
                   style={{ background: 'none', border: 'none', color: '#15803d', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
                 >
                   <Edit3 size={14} />
@@ -3139,7 +3019,7 @@ export const CollectorSellPage = () => {
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
-                onClick={() => setStep(5)}
+                onClick={() => setStep(4)}
                 disabled={isSubmitting}
                 style={{
                   flex: 1,
@@ -3186,9 +3066,9 @@ export const CollectorSellPage = () => {
         )}
 
         {/* =========================================================================
-            STEP 7: SUCCESS CONFIRMATION SCREEN
+            STEP 6: SUCCESS CONFIRMATION SCREEN
             ========================================================================= */}
-        {step === 7 && createdLot && (
+        {step === 6 && createdLot && (
           <div>
             <Card
               style={{
@@ -4434,6 +4314,12 @@ export const CollectorLotsPage = () => {
   const [selectedOfferForConfirm, setSelectedOfferForConfirm] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  // Cashfree payment state
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentOffer, setPaymentOffer] = useState(null);   // offer being paid for
+  const [paymentTxnId, setPaymentTxnId] = useState(null);   // TXN-xxxx for the payment
+  const [verifiedTxnIds, setVerifiedTxnIds] = useState(new Set()); // track which txns are VERIFIED
+
   useEffect(() => {
     const data = getScrapLotsByCollector(activeCollectorId);
     setLots(data);
@@ -4444,8 +4330,9 @@ export const CollectorLotsPage = () => {
     try {
       const updatedOffer = acceptOffer(selectedOfferForConfirm.offerId, selectedOfferForConfirm.lotId);
       // Auto-create a transaction for this accepted offer
+      let txnId = null;
       try {
-        createTransaction({
+        const newTxn = createTransaction({
           offerId: selectedOfferForConfirm.offerId,
           lotId: selectedOfferForConfirm.lotId,
           collectorId: activeCollectorId,
@@ -4460,15 +4347,38 @@ export const CollectorLotsPage = () => {
           agreedPrice: selectedOfferForConfirm.offeredPrice,
           totalAmount: selectedOfferForConfirm.totalOfferValue,
         });
+        txnId = newTxn?.transactionId || null;
       } catch (txErr) {
+        // Transaction may already exist — try to fetch existing
         console.warn('Transaction already exists or could not be created:', txErr.message);
+        try {
+          const existingTxn = getTransactionByOffer(selectedOfferForConfirm.offerId);
+          txnId = existingTxn?.transactionId || null;
+        } catch (_) {}
       }
-      setRefreshTrigger((prev) => prev + 1);
+
+      // Close the confirmation modal and open the Cashfree payment modal
       setSelectedOfferForConfirm(null);
       setSelectedLotForOffers(null);
+
+      if (txnId) {
+        setPaymentOffer({ ...selectedOfferForConfirm });
+        setPaymentTxnId(txnId);
+        setPaymentModalOpen(true);
+      } else {
+        // Fallback: no transaction ID — refresh lots without payment modal
+        setRefreshTrigger((prev) => prev + 1);
+      }
     } catch (err) {
       console.error('Failed to accept offer:', err);
     }
+  };
+
+  const handlePaymentVerified = ({ transactionId }) => {
+    // Mark this transaction as verified locally so handover can be enabled
+    setVerifiedTxnIds((prev) => new Set([...prev, transactionId]));
+    setPaymentModalOpen(false);
+    setRefreshTrigger((prev) => prev + 1);
   };
 
   return (
@@ -4998,6 +4908,20 @@ export const CollectorLotsPage = () => {
           )}
         </Modal>
       </PageContainer>
+
+      {/* Cashfree Payment Modal — opens after collector accepts an offer */}
+      <CashfreePaymentModal
+        isOpen={paymentModalOpen}
+        onClose={() => {
+          setPaymentModalOpen(false);
+          setRefreshTrigger((prev) => prev + 1);
+        }}
+        offer={paymentOffer}
+        transactionId={paymentTxnId}
+        collectorId={activeCollectorId}
+        onPaymentVerified={handlePaymentVerified}
+      />
+
       <MobileBottomNav role="COLLECTOR" />
     </div>
   );

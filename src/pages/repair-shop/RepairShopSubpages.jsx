@@ -52,7 +52,7 @@ import {
   confirmBuyerReceipt,
   getHandoversByTransaction 
 } from '../../services/handoverService';
-import { 
+import {
   createPaymentRecord,
   getPaymentsByTransaction,
   VALID_PAYMENT_METHODS 
@@ -66,6 +66,10 @@ import {
   completePickup,
   cancelPickup
 } from '../../services/pickupService';
+import PaymentReceiptModal from '../../components/payment/PaymentReceiptModal';
+import PaymentReceiptsPageShared from '../../components/payment/PaymentReceiptsPage';
+import { getReceiptByTransaction } from '../../services/paymentReceiptService';
+import RazorpayPaymentModal from '../../components/payment/RazorpayPaymentModal';
 
 /**
  * Reusable Repair Shop Navigation Bar
@@ -79,6 +83,7 @@ export const RepairShopNavBar = () => {
     { label: `💰 ${t('offers')}`, path: '/repair-shop/offers' },
     { label: `📦 ${t('purchases')}`, path: '/repair-shop/purchases' },
     { label: `📄 ${t('transactions')}`, path: '/repair-shop/transactions' },
+    { label: `📎 Payment Receipts`, path: '/repair-shop/receipts' },
     { label: `👤 ${t('profile')}`, path: '/repair-shop/profile' },
   ];
 
@@ -797,6 +802,12 @@ export const RepairShopTransactionsPage = () => {
   const [paymentRefNote, setPaymentRefNote] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
+  // Razorpay payment modal state (Module 18)
+  const [razorpayModalTx, setRazorpayModalTx] = useState(null);
+
+  // Receipt upload modal state (Module 16)
+  const [receiptUploadTx, setReceiptUploadTx] = useState(null);
+
   // Module 14 Pickup modal state
   const [pickupModalTx, setPickupModalTx] = useState(null);
   const [pickupMethod, setPickupMethod] = useState('collector_dropoff');
@@ -850,6 +861,31 @@ export const RepairShopTransactionsPage = () => {
     setPaymentMethod('Cash');
     setPaymentRefNote('');
     setPaymentError('');
+  };
+
+  const handleOpenRazorpay = (tx) => {
+    setRazorpayModalTx(tx);
+  };
+
+  const handleRazorpaySuccess = (result, tx) => {
+    try {
+      createPaymentRecord({
+        transactionId: tx.transactionId,
+        collectorId: tx.collectorId,
+        buyerId: activeBuyerId,
+        buyerRole: 'repair',
+        amount: tx.totalAmount,
+        currency: 'INR',
+        paymentMethod: 'Razorpay',
+        referenceNote: `Razorpay Payment ID: ${result.paymentId} | Order: ${result.orderId}`,
+        recordedBy: activeBuyerId,
+      });
+      refreshList();
+      setRazorpayModalTx(null);
+    } catch (err) {
+      console.error('Failed to record Razorpay payment:', err);
+      alert('Payment verified but recording failed: ' + (err.message || ''));
+    }
   };
 
   const handleOpenPickup = (tx) => {
@@ -1035,15 +1071,44 @@ export const RepairShopTransactionsPage = () => {
                           </Button>
                         )}
                         {canRecordPayment && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            id={`btn-rs-payment-${tx.transactionId}`}
-                            onClick={() => handleOpenPayment(tx)}
-                          >
-                            {t('recordPayment')}
-                          </Button>
+                          <>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              id={`btn-rs-razorpay-${tx.transactionId}`}
+                              onClick={() => handleOpenRazorpay(tx)}
+                              style={{
+                                background: 'linear-gradient(135deg,#072654,#1a56db)',
+                                color: '#fff',
+                                border: 'none',
+                                fontWeight: 700,
+                              }}
+                            >
+                              💳 Pay Razorpay
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              id={`btn-rs-payment-${tx.transactionId}`}
+                              onClick={() => handleOpenPayment(tx)}
+                            >
+                              {t('recordPayment')}
+                            </Button>
+                          </>
                         )}
+                        {/* Module 16: Upload Payment Receipt */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          id={`btn-rs-upload-receipt-${tx.transactionId}`}
+                          onClick={() => setReceiptUploadTx(tx)}
+                          style={{
+                            borderColor: getReceiptByTransaction(tx.transactionId) ? '#15803d' : undefined,
+                            color: getReceiptByTransaction(tx.transactionId) ? '#15803d' : undefined,
+                          }}
+                        >
+                          📎 {getReceiptByTransaction(tx.transactionId) ? 'View Receipt' : 'Upload Receipt'}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -1086,6 +1151,46 @@ export const RepairShopTransactionsPage = () => {
               <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.35rem' }}>
                 💰 {t('recordPayment')}
               </h3>
+
+              {/* Quick switch to Razorpay */}
+              <div style={{
+                background: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+                border: '1px solid #bfdbfe',
+                borderRadius: '8px',
+                padding: '0.65rem 0.85rem',
+                marginBottom: '0.85rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px'
+              }}>
+                <div style={{ fontSize: '0.76rem', color: '#1e40af', fontWeight: 600 }}>
+                  Want to pay online via UPI or Card?
+                </div>
+                <button
+                  type="button"
+                  id="btn-switch-to-razorpay"
+                  onClick={() => {
+                    const tx = paymentModalTx;
+                    setPaymentModalTx(null);
+                    handleOpenRazorpay(tx);
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg,#072654,#1a56db)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '5px 10px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  💳 Pay Razorpay
+                </button>
+              </div>
+
               <div style={{ background: '#fef3c7', border: '1px solid #fde68a', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', color: '#92400e', marginBottom: '1rem', fontWeight: 600 }}>
                 ⚠️ Demo payment record — not real payment processing.
               </div>
@@ -1162,6 +1267,37 @@ export const RepairShopTransactionsPage = () => {
             </div>
           </div>
         </div>
+      )}
+      {/* Upload Payment Receipt Modal (Module 16) */}
+      <PaymentReceiptModal
+        isOpen={!!receiptUploadTx}
+        onClose={() => setReceiptUploadTx(null)}
+        transaction={receiptUploadTx}
+        uploadedBy={activeBuyerId}
+        uploadedByRole="repair"
+        buyerName={user?.name || 'Repair Shop'}
+        onUploaded={() => {
+          setReceiptUploadTx(null);
+          refreshList();
+        }}
+      />
+
+      {/* Razorpay Payment Modal (Module 18) */}
+      {razorpayModalTx && (
+        <RazorpayPaymentModal
+          isOpen={!!razorpayModalTx}
+          onClose={() => setRazorpayModalTx(null)}
+          receiptId={razorpayModalTx.transactionId}
+          amount={razorpayModalTx.totalAmount || 0}
+          payerId={activeBuyerId}
+          payerName={user?.name || 'Repair Shop'}
+          payerEmail={user?.email || 'repair@scrapsetu.demo'}
+          payerPhone={user?.phone || '9999999999'}
+          payerRole="repair"
+          description={`Material Payment: ${razorpayModalTx.materialCategory} (${razorpayModalTx.weight} ${razorpayModalTx.weightUnit})`}
+          onSuccess={(result) => handleRazorpaySuccess(result, razorpayModalTx)}
+          onFailure={() => setRazorpayModalTx(null)}
+        />
       )}
     </div>
   );
@@ -1283,5 +1419,17 @@ export const RepairShopProfilePage = () => {
         </div>
       </PageContainer>
     </div>
+  );
+};
+/**
+ * 7. Payment Receipts Page (/repair-shop/receipts) — Module 16
+ */
+export const RepairShopReceiptsPage = () => {
+  return (
+    <PaymentReceiptsPageShared
+      role="repair"
+      backPath="/repair-shop/transactions"
+      NavBar={RepairShopNavBar}
+    />
   );
 };

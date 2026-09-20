@@ -11,6 +11,11 @@ build/
 coverage/
 .nyc_output/
 
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
 # Environment and sensitive credential files
 .env
 .env.*

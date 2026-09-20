@@ -44,6 +44,23 @@ export const SEED_PICKUPS = [
     sourceType: 'demo_seed',
     createdAt: '2026-09-19T16:30:00.000Z',
     updatedAt: '2026-09-19T17:00:00.000Z'
+  },
+  {
+    pickupId: 'PKP-0003',
+    transactionId: 'TXN-0003',
+    lotId: 'LOT-0001',
+    collectorId: 'usr-collector-01',
+    buyerId: 'usr-repair-01',
+    buyerRole: 'repair',
+    method: 'collector_dropoff',
+    scheduledDate: '2026-09-20',
+    scheduledTime: '10:00',
+    location: 'Om Electronics & Laptop Care, Lamington Road, Mumbai',
+    notes: 'PCB delivered and verified on inspection bench.',
+    status: 'completed',
+    sourceType: 'demo_seed',
+    createdAt: '2026-09-20T09:30:00.000Z',
+    updatedAt: '2026-09-20T10:00:00.000Z'
   }
 ];
 

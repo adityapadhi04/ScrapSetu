@@ -30,7 +30,7 @@ export const VALID_TRANSACTION_STATUSES = [
   'cancelled'
 ];
 
-export const VALID_PAYMENT_STATUSES = ['pending', 'recorded', 'failed'];
+export const VALID_PAYMENT_STATUSES = ['pending', 'recorded', 'verified', 'failed', 'cancelled'];
 export const VALID_HANDOVER_STATUSES = ['pending', 'collector_confirmed', 'confirmed', 'disputed'];
 export const VALID_PAYMENT_METHODS = ['Cash', 'UPI', 'Bank Transfer', 'Other'];
 
@@ -46,7 +46,20 @@ export const initializeTransactions = () => {
       return [...SEED_TRANSACTIONS];
     }
     const parsed = JSON.parse(existing);
-    return Array.isArray(parsed) ? parsed : [...SEED_TRANSACTIONS];
+    if (Array.isArray(parsed)) {
+      let changed = false;
+      for (const seed of SEED_TRANSACTIONS) {
+        if (!parsed.some((t) => t.transactionId === seed.transactionId)) {
+          parsed.push(seed);
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem(STORAGE_KEY_TRANSACTIONS, JSON.stringify(parsed));
+      }
+      return parsed;
+    }
+    return [...SEED_TRANSACTIONS];
   } catch (err) {
     console.error('Error initializing scrapsetu_transactions:', err);
     return [...SEED_TRANSACTIONS];
@@ -245,7 +258,14 @@ export const getTransactionsByCollector = (collectorId) => {
 export const getTransactionsByBuyer = (buyerId) => {
   if (!buyerId) return [];
   const transactions = getTransactions();
-  return transactions.filter((tx) => tx.buyerId === buyerId);
+  const isRepairShop = buyerId === 'usr-repair-01' || buyerId === 'SHOP-0001' || buyerId === 'SHOP-0002';
+  return transactions.filter((tx) => {
+    if (tx.buyerId === buyerId) return true;
+    if (isRepairShop && (tx.buyerId === 'usr-repair-01' || tx.buyerId === 'SHOP-0001' || tx.buyerId === 'SHOP-0002' || tx.buyerRole === 'repair')) {
+      return true;
+    }
+    return false;
+  });
 };
 
 export const getTransactionsByLot = (lotId) => {
@@ -318,7 +338,10 @@ export const checkAndCompleteTransaction = (transactionId) => {
   const tx = getTransactionById(transactionId);
   if (!tx) return null;
 
-  if (tx.handoverStatus === 'confirmed' && tx.paymentStatus === 'recorded') {
+  // A payment is considered complete if status is 'recorded' OR 'verified' (Cashfree)
+  const paymentComplete = tx.paymentStatus === 'recorded' || tx.paymentStatus === 'verified';
+
+  if (tx.handoverStatus === 'confirmed' && paymentComplete) {
     const updated = _patchTransactionFields(transactionId, { transactionStatus: 'completed' });
     try {
       if (tx.lotId) updateScrapLotTransactionStatus(tx.lotId, 'completed');
@@ -327,7 +350,7 @@ export const checkAndCompleteTransaction = (transactionId) => {
   }
 
   // Keep partial intermediate statuses informative
-  if (tx.handoverStatus === 'confirmed' && tx.paymentStatus !== 'recorded') {
+  if (tx.handoverStatus === 'confirmed' && !paymentComplete) {
     if (tx.transactionStatus === 'handover_pending' || tx.transactionStatus === 'created') {
       const updated = _patchTransactionFields(transactionId, { transactionStatus: 'payment_pending' });
       try {
@@ -337,7 +360,7 @@ export const checkAndCompleteTransaction = (transactionId) => {
     }
   }
 
-  if (tx.paymentStatus === 'recorded' && tx.handoverStatus !== 'confirmed') {
+  if (paymentComplete && tx.handoverStatus !== 'confirmed') {
     if (tx.transactionStatus !== 'handover_pending') {
       const updated = _patchTransactionFields(transactionId, { transactionStatus: 'handover_pending' });
       try {
@@ -381,9 +404,12 @@ export const getTransactionStats = () => {
 
 export const getCollectorEarnings = (collectorId) => {
   const myTransactions = getTransactionsByCollector(collectorId);
-  const recorded = myTransactions.filter((tx) => tx.paymentStatus === 'recorded');
+  // Include both 'recorded' and 'verified' (Cashfree) payments as completed
+  const recorded = myTransactions.filter(
+    (tx) => tx.paymentStatus === 'recorded' || tx.paymentStatus === 'verified'
+  );
   const pending = myTransactions.filter(
-    (tx) => tx.paymentStatus === 'pending' && tx.transactionStatus !== 'cancelled'
+    (tx) => (tx.paymentStatus === 'pending') && tx.transactionStatus !== 'cancelled'
   );
   const totalRecorded = recorded.reduce((sum, tx) => sum + (tx.totalAmount || 0), 0);
   const totalPending = pending.reduce((sum, tx) => sum + (tx.totalAmount || 0), 0);
