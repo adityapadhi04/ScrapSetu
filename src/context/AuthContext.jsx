@@ -7,6 +7,8 @@ import {
   authenticateDemoUser, 
   getDemoUserByRole 
 } from '../data/demoUsers';
+import { isOnline as checkOnline, subscribeToConnectivity } from '../services/offlineService';
+import { initSyncEngine } from '../services/syncEngine';
 
 export const ROLES = {
   COLLECTOR: 'collector',
@@ -122,7 +124,20 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isAudioActive, setIsAudioActive] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
+  // isOffline is derived from navigator.onLine via offlineService.
+  // Kept toggleOffline() for dev/demo mode override (Header click).
+  const [isOffline, setIsOffline] = useState(() => !checkOnline());
+
+  // Wire real connectivity detection on mount
+  useEffect(() => {
+    // Initialize sync engine auto-sync on reconnect
+    initSyncEngine();
+    // Subscribe to browser online/offline events
+    const unsubscribe = subscribeToConnectivity((online) => {
+      setIsOffline(!online);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Restore authenticated session from localStorage on application mount
   useEffect(() => {

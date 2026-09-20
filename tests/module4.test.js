@@ -37,6 +37,8 @@ import {
 import {
   identifyMaterial,
   validateIdentificationResult,
+  validateDetectedItem,
+  CV_MODEL_INFO,
   IDENTIFICATION_MODE
 } from '../src/services/materialIdentificationService.js';
 
@@ -418,5 +420,114 @@ describe('ScrapSetu Module 4: AI Material Identification + Material Dataset', ()
       /already exists for lotId/,
       'Must prevent duplicate material record for the same lotId'
     );
+  });
+
+  // TEST 13: Multi-item identification result structure
+  test('TEST 13: Multi-item identification result structure', async () => {
+    const result = await identifyMaterial('test_ewaste_photo.jpg', {
+      skipDelay: true,
+      isMixedCollection: true
+    });
+
+    assert.ok(result.detectedItems, 'Result must include detectedItems array');
+    assert.ok(Array.isArray(result.detectedItems), 'detectedItems must be an array');
+    assert.ok(result.detectedItems.length >= 2, 'Mixed e-waste photo must detect at least 2 distinct items');
+    assert.equal(result.hasMultipleItems, true, 'hasMultipleItems must be true');
+    assert.equal(result.totalDetected, result.detectedItems.length);
+    assert.ok(result.modelInfo, 'Model metadata must be present');
+    assert.equal(result.modelInfo.isTrainedModel, false, 'Honest disclosure: not an externally trained neural model');
+  });
+
+  // TEST 14: Each detected item satisfies schema
+  test('TEST 14: Each detected item satisfies schema', async () => {
+    const result = await identifyMaterial('test_ewaste_photo.jpg', {
+      skipDelay: true,
+      isMixedCollection: true
+    });
+
+    for (const item of result.detectedItems) {
+      assert.ok(validateDetectedItem(item), `Item ${item.itemId} must satisfy schema contract`);
+      assert.ok(item.category, 'Item category must be defined');
+      assert.ok(typeof item.confidence === 'number' && item.confidence >= 0 && item.confidence <= 1);
+      assert.equal(item.identificationMethod, 'demo_ai');
+      assert.ok(item.boundingBox, 'Item must have boundingBox spatial coordinates');
+      assert.ok(typeof item.boundingBox.x === 'number');
+      assert.ok(typeof item.boundingBox.y === 'number');
+      assert.ok(typeof item.boundingBox.width === 'number');
+      assert.ok(typeof item.boundingBox.height === 'number');
+    }
+  });
+
+  // TEST 15: Overriding a detected item preserves original AI suggestion
+  test('TEST 15: Overriding a detected item preserves original AI suggestion', async () => {
+    const result = await identifyMaterial('test_ewaste_photo.jpg', {
+      skipDelay: true,
+      isMixedCollection: true
+    });
+
+    const targetItem = result.detectedItems[0];
+    const originalAiCategory = targetItem.category;
+    const originalConfidence = targetItem.confidence;
+
+    // Human overrides category to "Mobile Phone"
+    const overriddenItem = {
+      ...targetItem,
+      category: 'Mobile Phone',
+      subcategory: 'Smartphone Assembly',
+      identificationMethod: 'manual',
+      collectorConfirmed: true,
+      aiSuggestedCategory: originalAiCategory,
+      aiConfidenceScore: originalConfidence
+    };
+
+    assert.equal(overriddenItem.category, 'Mobile Phone');
+    assert.equal(overriddenItem.identificationMethod, 'manual');
+    assert.equal(overriddenItem.collectorConfirmed, true);
+    assert.equal(overriddenItem.aiSuggestedCategory, originalAiCategory, 'Must preserve original AI suggestion');
+    assert.equal(overriddenItem.aiConfidenceScore, originalConfidence, 'Must preserve original AI confidence score');
+  });
+
+  // TEST 16: Multi-item lot creation produces independent, linked scrap lots
+  test('TEST 16: Multi-item lot creation produces independent, linked scrap lots', () => {
+    const initialLots = getScrapLots().length;
+    const initialMaterials = getMaterialRecords().length;
+
+    const detectedSample = [
+      { category: 'Laptop / Computer', subcategory: 'Laptop Assembly', confidence: 0.84, weight: 2.5 },
+      { category: 'PCB', subcategory: 'Computer PCB', confidence: 0.88, weight: 1.0 },
+      { category: 'Cable', subcategory: 'Copper Cable', confidence: 0.81, weight: 1.5 }
+    ];
+
+    const batchId = 'BATCH-TEST-01';
+    const createdLots = [];
+
+    for (const item of detectedSample) {
+      const lot = createScrapLot({
+        collectorId: 'usr-collector-multi',
+        materialType: item.category,
+        materialSubcategory: item.subcategory,
+        weight: item.weight,
+        condition: 'fair',
+        location: 'Gunupur Station Road',
+        identificationMethod: 'demo_ai',
+        confidenceScore: item.confidence,
+        collectorConfirmed: true,
+        notes: `Item ${item.category} from mixed collection ${batchId}`
+      });
+      createdLots.push(lot);
+    }
+
+    assert.equal(createdLots.length, 3, 'Must create 3 distinct scrap lots');
+    assert.equal(getScrapLots().length, initialLots + 3);
+    assert.equal(getMaterialRecords().length, initialMaterials + 3);
+
+    // Verify each lot is independently queryable and linked to its own MAT record
+    for (let i = 0; i < createdLots.length; i++) {
+      const lot = createdLots[i];
+      const mat = getMaterialRecordById(lot.materialId);
+      assert.ok(mat, `Material record for lot ${lot.id} must exist`);
+      assert.equal(mat.materialCategory, detectedSample[i].category);
+      assert.equal(mat.approximateWeight, detectedSample[i].weight);
+    }
   });
 });

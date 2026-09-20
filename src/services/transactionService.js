@@ -16,6 +16,7 @@
 
 import { SEED_TRANSACTIONS } from '../data/transactionSeedData.js';
 import { updateScrapLotTransactionStatus } from './scrapLotService.js';
+import { enqueue } from './syncQueueService.js';
 
 export const STORAGE_KEY_TRANSACTIONS = 'scrapsetu_transactions';
 
@@ -206,6 +207,21 @@ export const createTransaction = (data) => {
     }
   } catch (e) {
     // Non-fatal if lot service is in isolation
+  }
+
+  // Queue for sync — only platform_generated transactions
+  if (newTransaction.sourceType !== 'demo_seed') {
+    try {
+      enqueue({
+        operation: 'create',
+        entityType: 'transaction',
+        entityId: newTransaction.transactionId,
+        payload: { transactionId: newTransaction.transactionId, lotId: newTransaction.lotId, status: newTransaction.transactionStatus },
+        userId: newTransaction.collectorId,
+      });
+    } catch (qErr) {
+      console.warn('[transactionService] Could not enqueue sync operation:', qErr.message);
+    }
   }
 
   return newTransaction;

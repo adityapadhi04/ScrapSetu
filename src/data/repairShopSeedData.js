@@ -25,11 +25,15 @@ export const DEMO_REPAIR_SHOPS = [
     acceptedMaterials: [
       'Mobile Phone',
       'Laptop / Computer',
-      'LCD / Display'
+      'PCB',
+      'Cable',
+      'LCD / Display',
+      'Battery'
     ],
     wantedItems: [
       'Mobile Phone',
-      'LCD / Display'
+      'LCD / Display',
+      'Laptop / Computer'
     ],
     services: [
       'Parts recovery',
@@ -58,8 +62,11 @@ export const DEMO_REPAIR_SHOPS = [
     },
     acceptedMaterials: [
       'Laptop / Computer',
+      'Mobile Phone',
       'PCB',
+      'Cable',
       'LCD / Display',
+      'Battery',
       'Motor'
     ],
     wantedItems: [

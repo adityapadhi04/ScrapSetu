@@ -112,6 +112,29 @@ export function getRepairShops(filter = {}) {
     if (!records || !Array.isArray(records) || records.length === 0) {
       records = [...DEMO_REPAIR_SHOPS];
       localStorage.setItem(STORAGE_KEY_REPAIR_SHOPS, JSON.stringify(records));
+    } else {
+      let changed = false;
+      records = records.map((r) => {
+        const seed = DEMO_REPAIR_SHOPS.find((s) => s.repairShopId === r.repairShopId);
+        if (seed && Array.isArray(seed.acceptedMaterials)) {
+          const currentSet = new Set(r.acceptedMaterials || []);
+          let added = false;
+          for (const mat of seed.acceptedMaterials) {
+            if (!currentSet.has(mat)) {
+              currentSet.add(mat);
+              added = true;
+            }
+          }
+          if (added) {
+            changed = true;
+            return { ...r, acceptedMaterials: Array.from(currentSet) };
+          }
+        }
+        return r;
+      });
+      if (changed) {
+        localStorage.setItem(STORAGE_KEY_REPAIR_SHOPS, JSON.stringify(records));
+      }
     }
 
     if (filter.status) {

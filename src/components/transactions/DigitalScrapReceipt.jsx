@@ -1,4 +1,5 @@
 import React from 'react';
+import { calculateTransactionImpact } from '../../services/environmentalImpactService';
 
 /**
  * ScrapSetu — Digital Scrap Receipt Component (Module 9)
@@ -48,6 +49,8 @@ export const DigitalScrapReceipt = ({ transaction, handover, payment, style }) =
     buyer_pickup: 'Buyer Pickup',
     drop_off: 'Drop-off at Buyer Location'
   }[handover?.handoverMethod] || (handover?.handoverMethod || '—');
+
+  const envImpact = calculateTransactionImpact(transaction);
 
   return (
     <div
@@ -149,6 +152,44 @@ export const DigitalScrapReceipt = ({ transaction, handover, payment, style }) =
           </div>
         ))}
       </div>
+
+      {/* Environmental Contribution (Module 11) */}
+      {envImpact && (
+        <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '10px', padding: '0.85rem', marginBottom: '1rem', fontSize: '0.82rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontWeight: 800, color: '#15803d', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              🌱 Environmental Contribution
+            </span>
+            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#166534', background: '#dcfce7', padding: '2px 6px', borderRadius: '4px' }}>
+              Prototype Estimate
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <span style={{ color: '#4b5563' }}>Recovery Pathway:</span>
+            <strong style={{ color: envImpact.pathway === 'Reuse / Repair' ? '#b45309' : '#0369a1' }}>
+              {envImpact.pathway === 'Reuse / Repair' ? '🔧 Reuse / Repair' : '♻️ Authorized Recycling'}
+            </strong>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <span style={{ color: '#4b5563' }}>Material Diverted:</span>
+            <strong style={{ color: '#15803d' }}>
+              {envImpact.divertedWeight} kg ({transaction.materialCategory})
+            </strong>
+          </div>
+
+          {envImpact.benefitDescription && (
+            <p style={{ margin: '6px 0 0 0', fontSize: '0.74rem', color: '#166534', lineHeight: 1.35, fontStyle: 'italic' }}>
+              "{envImpact.benefitDescription}"
+            </p>
+          )}
+
+          <div style={{ fontSize: '0.66rem', color: '#6b7280', marginTop: '6px', borderTop: '1px dashed #86efac', paddingTop: '4px' }}>
+            ⚠️ Prototype environmental estimate based on mass diversion. Not a certified carbon credit or regulatory offset.
+          </div>
+        </div>
+      )}
 
       {/* Payment Details */}
       {payment && (

@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import SyncStatusIndicator from '../offline/SyncStatusIndicator';
 
 export const Header = () => {
   const { isOffline, toggleOffline } = useAuth();
   const { currentLanguage, setLanguage, t, currentLangObj, supportedLanguages } = useLanguage();
   const [isLangOpen, setIsLangOpen] = useState(false);
   const langMenuRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -49,35 +51,30 @@ export const Header = () => {
           </span>
         </Link>
 
-        {/* RIGHT: Status indicator & Language selector */}
+        {/* RIGHT: Sync Status Indicator & Language selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          {/* Subtle System Status Indicator */}
+          {/* Sync Status Indicator — click to open sync status page */}
+          <SyncStatusIndicator
+            onClick={() => navigate('/sync-status')}
+          />
+
+          {/* Dev-mode offline toggle (small, title-only) */}
           <button
             type="button"
             onClick={toggleOffline}
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: '99px',
-              border: '1px solid',
-              borderColor: isOffline ? '#fde68a' : '#dcfce7',
-              background: isOffline ? '#fffbeb' : '#f0fdf4',
-              color: isOffline ? '#b45309' : '#15803d',
-              fontSize: '0.8rem',
-              fontWeight: 600,
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              border: 'none',
+              background: isOffline ? '#d97706' : '#22c55e',
               cursor: 'pointer',
-              transition: 'all 0.15s ease'
+              opacity: 0.6,
+              flexShrink: 0
             }}
-            title="System Status Indicator (Click to toggle simulated offline state)"
-            aria-label={`System is currently ${isOffline ? 'Offline' : 'Online'}. Click to toggle.`}
-          >
-            <span style={{ fontSize: '0.7rem', color: isOffline ? '#d97706' : '#22c55e' }}>
-              {isOffline ? '○' : '●'}
-            </span>
-            <span>{isOffline ? t('offline') : t('online')}</span>
-          </button>
+            title={`Dev: Click to toggle simulated offline (currently ${isOffline ? 'Offline' : 'Online'})`}
+            aria-label="Developer offline toggle"
+          />
 
           <div style={{ width: '1px', height: '18px', background: '#e2e8f0' }} />
 

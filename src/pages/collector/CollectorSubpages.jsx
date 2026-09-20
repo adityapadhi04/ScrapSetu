@@ -81,6 +81,14 @@ import {
   VALID_PAYMENT_METHODS
 } from '../../services/paymentService';
 import DigitalScrapReceipt from '../../components/transactions/DigitalScrapReceipt';
+import SafetyGuidanceCard from '../../components/SafetyGuidanceCard';
+import {
+  getPickupsByCollector,
+  getPickupByTransactionId,
+  createPickupRequest,
+  schedulePickup,
+  cancelPickup
+} from '../../services/pickupService';
 
 /**
  * 7-Step Mobile-First Scrap Lot Creation Wizard for Collector (Module 3)
@@ -113,6 +121,11 @@ export const CollectorSellPage = () => {
   // Module 4: AI Identification & Human-in-the-Loop State
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState(null);
+  const [detectedItems, setDetectedItems] = useState([]);
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
+  const [itemWeights, setItemWeights] = useState({});
+  const [createdLots, setCreatedLots] = useState([]);
   const [showManualSelection, setShowManualSelection] = useState(false);
   const [identificationMethod, setIdentificationMethod] = useState('demo_ai');
   const [confidenceScore, setConfidenceScore] = useState(0.91);
@@ -314,6 +327,8 @@ export const CollectorSellPage = () => {
       try {
         const result = await identifyMaterial(photo, { skipDelay: false });
         setAiResult(result);
+        const items = result.detectedItems || [];
+        setDetectedItems(items);
         setAiSuggestedCategory(result.materialCategory);
         setAiSuggestedSubcategory(result.materialSubcategory);
         setAiConfidenceScore(result.confidenceScore);
@@ -349,6 +364,71 @@ export const CollectorSellPage = () => {
     setMaterialSubcategory(aiResult.materialSubcategory);
     setIdentificationMethod('demo_ai');
     setConfidenceScore(aiResult.confidenceScore);
+    setCollectorConfirmed(true);
+    setStep(3); // Proceed to Weight
+  };
+
+  // Remove an item from detected list
+  const handleRemoveDetectedItem = (itemId) => {
+    setDetectedItems((prev) => prev.filter((item) => item.itemId !== itemId));
+  };
+
+  // Edit/override an item's category while preserving original AI suggestion
+  const handleEditDetectedItem = (itemId, newCategory) => {
+    const catItem = getCatalogItemByCategory(newCategory);
+    setDetectedItems((prev) =>
+      prev.map((item) => {
+        if (item.itemId === itemId) {
+          return {
+            ...item,
+            category: newCategory,
+            subcategory: catItem?.defaultSubcategory || newCategory,
+            identificationMethod: 'manual',
+            collectorConfirmed: true,
+            // Preserve original AI prediction for auditability
+            aiSuggestedCategory: item.aiSuggestedCategory || item.category,
+            aiSuggestedSubcategory: item.aiSuggestedSubcategory || item.subcategory,
+            aiConfidenceScore: item.aiConfidenceScore || item.confidence
+          };
+        }
+        return item;
+      })
+    );
+    setEditingItemId(null);
+  };
+
+  // Add missing material manually
+  const handleAddMissingMaterial = (newCategory) => {
+    const catItem = getCatalogItemByCategory(newCategory);
+    const newItem = {
+      itemId: `DET-M${Date.now().toString().slice(-4)}`,
+      category: newCategory,
+      subcategory: catItem?.defaultSubcategory || newCategory,
+      confidence: 1.0,
+      boundingBox: null,
+      identificationMethod: 'manual',
+      rationale: 'Manually added by collector from photo inspection.',
+      aiSuggestedCategory: null,
+      aiSuggestedSubcategory: null,
+      aiConfidenceScore: null,
+      collectorConfirmed: true
+    };
+    setDetectedItems((prev) => [...prev, newItem]);
+    setShowAddMaterialModal(false);
+  };
+
+  // Confirm all detected items and advance to Step 3
+  const handleConfirmAllDetections = () => {
+    if (!detectedItems || detectedItems.length === 0) {
+      setError('Please add or select at least one material.');
+      return;
+    }
+    setError('');
+    const primary = detectedItems[0];
+    setMaterialType(primary.category);
+    setMaterialSubcategory(primary.subcategory);
+    setIdentificationMethod(primary.identificationMethod || 'demo_ai');
+    setConfidenceScore(primary.confidence || 0.85);
     setCollectorConfirmed(true);
     setStep(3); // Proceed to Weight
   };
@@ -395,33 +475,86 @@ export const CollectorSellPage = () => {
     setIsSubmitting(true);
 
     try {
-      const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === materialType);
-      const category = selectedMatObj?.category || 'Electronic Components';
+      if (detectedItems && detectedItems.length > 1) {
+        // Multi-Item E-Waste Lot Creation
+        const batchId = `BATCH-${Date.now()}`;
+        const totalNumWeight = parseFloat(weight) || 5;
+        const weightPerItem = Math.max(0.1, parseFloat((totalNumWeight / detectedItems.length).toFixed(1)));
 
-      const newLot = createScrapLot({
-        collectorId: activeCollectorId,
-        materialType,
-        materialCategory: category,
-        materialSubcategory,
-        photo,
-        weight,
-        weightUnit,
-        condition,
-        location: locationArea,
-        notes,
-        identificationMethod,
-        confidenceScore,
-        collectorConfirmed: true,
-        aiSuggestedCategory,
-        aiSuggestedSubcategory,
-        aiConfidenceScore,
-        estimatedPrice: priceEstimate?.midPrice || null,
-        estimatedLotValueMin: priceEstimate?.estimatedLotValueMin || null,
-        estimatedLotValueMax: priceEstimate?.estimatedLotValueMax || null
-      });
+        const lotsCreated = [];
+        for (let i = 0; i < detectedItems.length; i++) {
+          const item = detectedItems[i];
+          const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === item.category);
+          const category = selectedMatObj?.category || item.category;
+          const itemWeight = itemWeights[item.itemId] ? parseFloat(itemWeights[item.itemId]) : weightPerItem;
 
-      setCreatedLot(newLot);
-      setStep(7); // Success Screen
+          const itemPriceEst = estimateFairPrice({
+            materialCategory: category,
+            materialSubcategory: item.subcategory || selectedMatObj?.defaultSubcategory || item.category,
+            weight: itemWeight,
+            weightUnit,
+            condition,
+            location: locationArea
+          });
+
+          const newLot = createScrapLot({
+            collectorId: activeCollectorId,
+            materialType: item.category,
+            materialCategory: category,
+            materialSubcategory: item.subcategory || selectedMatObj?.defaultSubcategory || item.category,
+            photo,
+            weight: itemWeight,
+            weightUnit,
+            condition,
+            location: locationArea,
+            notes: notes ? `${notes} • ${item.category}` : `Item from mixed e-waste photo: ${item.category}`,
+            identificationMethod: item.identificationMethod || 'demo_ai',
+            confidenceScore: item.confidence || 0.85,
+            collectorConfirmed: true,
+            aiSuggestedCategory: item.aiSuggestedCategory || null,
+            aiSuggestedSubcategory: item.aiSuggestedSubcategory || null,
+            aiConfidenceScore: item.aiConfidenceScore || null,
+            estimatedPrice: itemPriceEst?.midPrice || null,
+            estimatedLotValueMin: itemPriceEst?.estimatedLotValueMin || null,
+            estimatedLotValueMax: itemPriceEst?.estimatedLotValueMax || null
+          });
+
+          lotsCreated.push(newLot);
+        }
+
+        setCreatedLots(lotsCreated);
+        setCreatedLot(lotsCreated[0]);
+        setStep(7);
+      } else {
+        const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === materialType);
+        const category = selectedMatObj?.category || 'Electronic Components';
+
+        const newLot = createScrapLot({
+          collectorId: activeCollectorId,
+          materialType,
+          materialCategory: category,
+          materialSubcategory,
+          photo,
+          weight,
+          weightUnit,
+          condition,
+          location: locationArea,
+          notes,
+          identificationMethod,
+          confidenceScore,
+          collectorConfirmed: true,
+          aiSuggestedCategory,
+          aiSuggestedSubcategory,
+          aiConfidenceScore,
+          estimatedPrice: priceEstimate?.midPrice || null,
+          estimatedLotValueMin: priceEstimate?.estimatedLotValueMin || null,
+          estimatedLotValueMax: priceEstimate?.estimatedLotValueMax || null
+        });
+
+        setCreatedLots([newLot]);
+        setCreatedLot(newLot);
+        setStep(7);
+      }
     } catch (err) {
       console.error('Failed to create scrap lot:', err);
       setError(err.message || 'Failed to create scrap lot.');
@@ -437,6 +570,11 @@ export const CollectorSellPage = () => {
     setMaterialType('PCB');
     setMaterialSubcategory('Computer PCB');
     setAiResult(null);
+    setDetectedItems([]);
+    setCreatedLots([]);
+    setItemWeights({});
+    setEditingItemId(null);
+    setShowAddMaterialModal(false);
     setShowManualSelection(false);
     setIsAnalyzing(false);
     setIdentificationMethod('demo_ai');
@@ -843,112 +981,237 @@ export const CollectorSellPage = () => {
                   </div>
                 )}
 
-                {/* AI-Assisted Suggestion Card (when confident and not overridden) */}
+                {/* Multi-Item Detected E-Waste Items (when confident and not in manual catalog mode) */}
                 {aiResult.isConfident && !showManualSelection && (
-                  <Card
-                    id="ai-suggestion-card"
-                    style={{
-                      padding: '1.25rem',
-                      border: '2px solid #86efac',
-                      background: '#f0fdf4',
-                      borderRadius: '14px',
-                      marginBottom: '1.25rem'
-                    }}
-                  >
-                    {/* Header badge */}
+                  <div>
+                    {/* Header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          background: '#15803d',
-                          color: '#ffffff',
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          padding: '3px 10px',
-                          borderRadius: '99px',
-                          letterSpacing: '0.03em'
-                        }}
-                      >
-                        <Sparkles size={12} />
-                        <span>{t('aiAssistedSuggestion')}</span>
-                      </span>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Sparkles size={16} color="#15803d" />
+                          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                            {t('detectedItemsTitle') || 'Detected E-Waste Items'} ({detectedItems.length})
+                          </h3>
+                        </div>
+                        <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                          {t('detectedItemsSubtitle') || 'Multiple e-waste items identified in photo — review, edit, or add missing materials'}
+                        </p>
+                      </div>
 
                       <span
-                        id="ai-confidence-badge"
                         style={{
-                          fontSize: '0.78rem',
+                          fontSize: '0.72rem',
                           fontWeight: 800,
-                          color: '#166534',
-                          background: '#bbf7d0',
+                          background: '#e0f2fe',
+                          color: '#0369a1',
                           padding: '3px 8px',
                           borderRadius: '6px'
                         }}
                       >
-                        {t('aiConfidence')}: {Math.round(aiResult.confidenceScore * 100)}%
+                        Prototype CV
                       </span>
                     </div>
 
-                    {/* Identified Material Main Badge */}
-                    <div
-                      style={{
-                        background: '#ffffff',
-                        border: '1.5px solid #86efac',
-                        borderRadius: '12px',
-                        padding: '1rem',
-                        marginBottom: '1rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px'
-                      }}
-                    >
-                      <span style={{ fontSize: '2.4rem' }}>{selectedMaterialObj.icon}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0f172a' }}>
-                          {aiResult.materialCategory}
-                        </div>
-                        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#15803d' }}>
-                          {aiResult.materialSubcategory}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
-                          {aiResult.materialDescription}
-                        </div>
-                      </div>
+                    {/* Detected Items List */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
+                      {detectedItems.map((item, idx) => {
+                        const matObj = MATERIAL_OPTIONS.find((m) => m.type === item.category) || { icon: '📦', fallbackName: item.category };
+                        const isEditing = editingItemId === item.itemId;
+
+                        return (
+                          <Card
+                            key={item.itemId || idx}
+                            style={{
+                              padding: '0.9rem',
+                              border: isEditing ? '2px solid #3b82f6' : '1.5px solid #e2e8f0',
+                              borderRadius: '12px',
+                              background: item.collectorConfirmed ? '#f8fafc' : '#ffffff'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <span style={{ fontSize: '2rem' }}>{matObj.icon}</span>
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b' }}>#{idx + 1}</span>
+                                    <span style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0f172a' }}>{item.category}</span>
+                                    {item.collectorConfirmed && (
+                                      <span style={{ fontSize: '0.65rem', background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                        Edited
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.8rem', color: '#15803d', fontWeight: 700 }}>
+                                    {item.subcategory || item.category}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', fontSize: '0.72rem', color: '#64748b' }}>
+                                    <span>Confidence: <strong style={{ color: '#166534' }}>{Math.round((item.confidence || 0.8) * 100)}%</strong></span>
+                                    <span>•</span>
+                                    <span>Method: {item.identificationMethod === 'manual' ? 'Manual' : 'Prototype CV'}</span>
+                                    {item.boundingBox && (
+                                      <>
+                                        <span>•</span>
+                                        <span>Region: [{item.boundingBox.x}%, {item.boundingBox.y}%]</span>
+                                      </>
+                                    )}
+                                  </div>
+                                  {item.rationale && (
+                                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic', marginTop: '3px', maxWidth: '360px' }}>
+                                      "{item.rationale}"
+                                    </div>
+                                  )}
+                                  {item.aiSuggestedCategory && item.aiSuggestedCategory !== item.category && (
+                                    <div style={{ fontSize: '0.7rem', color: '#d97706', marginTop: '3px' }}>
+                                      Original AI suggestion: {item.aiSuggestedCategory} ({Math.round((item.aiConfidenceScore || 0) * 100)}%)
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingItemId(isEditing ? null : item.itemId)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: isEditing ? '#f1f5f9' : '#ffffff',
+                                    color: '#334155',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {isEditing ? 'Cancel' : 'Edit'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDetectedItem(item.itemId)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    borderRadius: '6px',
+                                    border: '1px solid #fecaca',
+                                    background: '#fef2f2',
+                                    color: '#dc2626',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+
+                            {isEditing && (
+                              <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed #cbd5e1' }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                                  Change Material Category:
+                                </span>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '6px' }}>
+                                  {MATERIAL_OPTIONS.map((opt) => (
+                                    <button
+                                      key={opt.type}
+                                      type="button"
+                                      onClick={() => handleEditDetectedItem(item.itemId, opt.type)}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '5px 8px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 600,
+                                        borderRadius: '6px',
+                                        border: item.category === opt.type ? '2px solid #15803d' : '1px solid #cbd5e1',
+                                        background: item.category === opt.type ? '#f0fdf4' : '#ffffff',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      <span>{opt.icon}</span>
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.fallbackName}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </Card>
+                        );
+                      })}
                     </div>
 
-                    {/* Why this suggestion? Accordion / Box */}
-                    <div
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.7)',
-                        borderRadius: '10px',
-                        padding: '0.85rem',
-                        marginBottom: '1.25rem',
-                        border: '1px solid #bbf7d0'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                        <Info size={15} color="#15803d" />
-                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#166534' }}>
-                          {t('whyThisSuggestion')}
-                        </span>
+                    {/* Add Missing Material Modal / Inline Box */}
+                    {showAddMaterialModal ? (
+                      <Card style={{ padding: '1rem', marginBottom: '1rem', border: '2px solid #15803d', background: '#f0fdf4' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <strong style={{ fontSize: '0.85rem', color: '#166534' }}>Select Material to Add:</strong>
+                          <button
+                            type="button"
+                            onClick={() => setShowAddMaterialModal(false)}
+                            style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.8rem', cursor: 'pointer' }}
+                          >
+                            ✕ Cancel
+                          </button>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '6px' }}>
+                          {MATERIAL_OPTIONS.map((opt) => (
+                            <button
+                              key={opt.type}
+                              type="button"
+                              onClick={() => handleAddMissingMaterial(opt.type)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 8px',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                borderRadius: '8px',
+                                border: '1px solid #cbd5e1',
+                                background: '#ffffff',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <span>{opt.icon}</span>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{opt.fallbackName}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </Card>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '1.25rem' }}>
+                        <button
+                          id="btn-add-missing-material"
+                          type="button"
+                          onClick={() => setShowAddMaterialModal(true)}
+                          style={{
+                            flex: 1,
+                            padding: '0.75rem',
+                            fontSize: '0.85rem',
+                            fontWeight: 700,
+                            borderRadius: '10px',
+                            border: '1.5px dashed #15803d',
+                            background: '#f0fdf4',
+                            color: '#15803d',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <PlusCircle size={16} />
+                          <span>{t('addMissingMaterial') || '+ Add Missing Material'}</span>
+                        </button>
                       </div>
-                      <p style={{ fontSize: '0.78rem', color: '#334155', margin: 0, lineHeight: 1.4 }}>
-                        {t('aiSuggestionExplanation')}
-                      </p>
-                      {aiResult.suggestions?.[0]?.rationale && (
-                        <p style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '4px', fontStyle: 'italic', margin: '4px 0 0 0' }}>
-                          "{aiResult.suggestions[0].rationale}"
-                        </p>
-                      )}
-                    </div>
+                    )}
 
-                    {/* Action Buttons: Confirm vs Choose Another */}
+                    {/* Action Buttons: Confirm Detections vs Browse Full Catalog */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <button
-                        id="btn-confirm-ai-material"
+                        id="btn-confirm-all-detections"
                         type="button"
-                        onClick={handleConfirmAiMaterial}
+                        onClick={handleConfirmAllDetections}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -967,7 +1230,7 @@ export const CollectorSellPage = () => {
                         }}
                       >
                         <Check size={18} />
-                        <span>✓ {t('confirmMaterial', { material: aiResult.materialCategory }).replace('{material}', aiResult.materialCategory)}</span>
+                        <span>✓ {t('confirmAllItems') || 'Confirm Detected Items →'}</span>
                       </button>
 
                       <button
@@ -994,7 +1257,7 @@ export const CollectorSellPage = () => {
                         <span>{t('chooseAnotherMaterial')}</span>
                       </button>
                     </div>
-                  </Card>
+                  </div>
                 )}
 
                 {/* Manual Selection Grid (shown if user overrides or if AI has low confidence) */}
@@ -1352,6 +1615,16 @@ export const CollectorSellPage = () => {
               })}
             </div>
 
+            {/* Module 11: Real-time Material & Condition Safety Guidance */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <SafetyGuidanceCard
+                materialCategory={materialType}
+                condition={condition}
+                compact={condition !== 'damaged' && condition !== 'burnt'}
+                showTransport={false}
+              />
+            </div>
+
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
@@ -1650,6 +1923,18 @@ export const CollectorSellPage = () => {
                 </button>
               </div>
             </Card>
+
+            {/* Module 11: Safety Handling & Transport Guidance in Review */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <SafetyGuidanceCard
+                materialCategory={materialType}
+                condition={condition}
+                compact={false}
+                showTransport={true}
+                showHandling={true}
+                showDoNotActions={true}
+              />
+            </div>
 
             {/* Module 5: Estimated Fair Price & Value Card */}
             {priceEstimate && (
@@ -3021,6 +3306,58 @@ export const CollectorSellPage = () => {
                 )}
               </div>
 
+              {/* Multi-Lot Creation List if multiple lots created */}
+              {createdLots && createdLots.length > 1 && (
+                <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <strong style={{ fontSize: '0.92rem', color: '#166534' }}>
+                      📦 {createdLots.length} Scrap Lots Created from Photo:
+                    </strong>
+                    <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                      All Active
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {createdLots.map((lot, idx) => {
+                      const mat = MATERIAL_OPTIONS.find((m) => m.type === lot.materialType) || { icon: '📦' };
+                      return (
+                        <div
+                          key={lot.id}
+                          style={{
+                            padding: '0.65rem 0.85rem',
+                            borderRadius: '8px',
+                            border: '1px solid #bbf7d0',
+                            background: '#ffffff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontSize: '1.4rem' }}>{mat.icon}</span>
+                            <div>
+                              <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
+                                {lot.id} • {lot.materialType}
+                              </strong>
+                              <span style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>
+                                {lot.weight} {lot.weightUnit} • {lot.condition} • {lot.materialId}
+                              </span>
+                            </div>
+                          </div>
+                          {lot.estimatedPrice && (
+                            <div style={{ textAlign: 'right' }}>
+                              <strong style={{ fontSize: '0.82rem', color: '#15803d' }}>
+                                ₹{lot.estimatedPrice}/kg
+                              </strong>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Summary Details */}
               <div
                 style={{
@@ -3279,6 +3616,15 @@ export const CollectorTransactionsPage = () => {
   const [paymentRefNote, setPaymentRefNote] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
+  // Module 14 Pickup modal state
+  const [pickupModalTx, setPickupModalTx] = useState(null);
+  const [pickupMethod, setPickupMethod] = useState('buyer_pickup');
+  const [pickupDate, setPickupDate] = useState('');
+  const [pickupTime, setPickupTime] = useState('');
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [pickupNotes, setPickupNotes] = useState('');
+  const [pickupError, setPickupError] = useState('');
+
   const refreshList = () => {
     const data = getTransactionsByCollector(activeCollectorId);
     setTransactions(data);
@@ -3338,6 +3684,58 @@ export const CollectorTransactionsPage = () => {
     setPaymentMethod('Cash');
     setPaymentRefNote('');
     setPaymentError('');
+  };
+
+  const handleOpenPickup = (tx) => {
+    setPickupModalTx(tx);
+    const existing = getPickupByTransactionId(tx.transactionId);
+    if (existing) {
+      setPickupMethod(existing.method || 'buyer_pickup');
+      setPickupDate(existing.scheduledDate || '');
+      setPickupTime(existing.scheduledTime || '');
+      setPickupLocation(existing.location || '');
+      setPickupNotes(existing.notes || '');
+    } else {
+      setPickupMethod('buyer_pickup');
+      setPickupDate('');
+      setPickupTime('');
+      setPickupLocation('');
+      setPickupNotes('');
+    }
+    setPickupError('');
+  };
+
+  const handleSavePickupSubmit = () => {
+    if (!pickupModalTx) return;
+    try {
+      const existing = getPickupByTransactionId(pickupModalTx.transactionId);
+      if (existing) {
+        schedulePickup(existing.pickupId, {
+          method: pickupMethod,
+          scheduledDate: pickupDate,
+          scheduledTime: pickupTime,
+          location: pickupLocation,
+          notes: pickupNotes,
+        }, user);
+      } else {
+        createPickupRequest({
+          transactionId: pickupModalTx.transactionId,
+          lotId: pickupModalTx.lotId,
+          collectorId: activeCollectorId,
+          buyerId: pickupModalTx.buyerId,
+          buyerRole: pickupModalTx.buyerRole,
+          method: pickupMethod,
+          scheduledDate: pickupDate,
+          scheduledTime: pickupTime,
+          location: pickupLocation,
+          notes: pickupNotes,
+        }, user);
+      }
+      refreshList();
+      setPickupModalTx(null);
+    } catch (err) {
+      setPickupError(err.message || 'Failed to save pickup coordination');
+    }
   };
 
   const handleSavePaymentSubmit = () => {
@@ -3433,6 +3831,38 @@ export const CollectorTransactionsPage = () => {
                     {tx.weight} {tx.weightUnit} • ₹{tx.agreedPrice}/kg • {tx.buyerName} ({tx.buyerRole})
                   </p>
 
+                  {/* Module 14: Pickup Status Indicator */}
+                  {(() => {
+                    const pkp = getPickupByTransactionId(tx.transactionId);
+                    return (
+                      <div style={{ width: '100%', margin: '0.45rem 0', padding: '0.55rem 0.75rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.78rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                          <span style={{ fontWeight: 700, color: '#475569' }}>
+                            🚚 {pkp ? (pkp.method === 'buyer_pickup' ? (t('buyerPickup') || 'Buyer Pickup') : (t('collectorDropoff') || 'Collector Drop-off')) : (t('pickupCoordination') || 'Collection Coordination')}:
+                          </span>
+                          <Badge variant={pkp?.status === 'completed' ? 'success' : (pkp?.status === 'scheduled' ? 'info' : (pkp?.status === 'cancelled' ? 'error' : 'warning'))}>
+                            {pkp ? pkp.status.toUpperCase() : (t('pickupRequested') || 'REQUESTED')}
+                          </Badge>
+                        </div>
+                        {pkp && (pkp.scheduledDate || pkp.location) && (
+                          <div style={{ color: '#64748b', fontSize: '0.74rem' }}>
+                            {pkp.scheduledDate && <span>📅 {pkp.scheduledDate} {pkp.scheduledTime} · </span>}
+                            {pkp.location && <span>📍 {pkp.location}</span>}
+                          </div>
+                        )}
+                        <div style={{ marginTop: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPickup(tx)}
+                            style={{ background: 'none', border: 'none', color: '#15803d', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: '0.76rem' }}
+                          >
+                            {pkp ? `✏️ ${t('schedulePickup') || 'Update Schedule'}` : `+ ${t('schedulePickup') || 'Schedule Pickup / Drop-off'}`}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '0.6rem', fontSize: '0.74rem', color: '#64748b' }}>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {[tx.transactionId, tx.offerId, tx.lotId].map((id) => (
@@ -3476,6 +3906,108 @@ export const CollectorTransactionsPage = () => {
           </div>
         )}
       </PageContainer>
+
+      {/* Module 14: Pickup Scheduling Modal */}
+      {pickupModalTx && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9000,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1rem'
+          }}
+        >
+          <div style={{ background: '#ffffff', borderRadius: '12px', padding: '1.25rem', maxWidth: '440px', width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>
+                🚚 {t('schedulePickup') || 'Schedule Pickup / Drop-off'}
+              </h3>
+              <button onClick={() => setPickupModalTx(null)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                  {t('pickupMethod') || 'Coordination Method'}
+                </label>
+                <select
+                  value={pickupMethod}
+                  onChange={(e) => setPickupMethod(e.target.value)}
+                  style={{ width: '100%', padding: '0.55rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                >
+                  <option value="buyer_pickup">{t('buyerPickup') || 'Buyer Pickup (Vehicle collects from you)'}</option>
+                  <option value="collector_dropoff">{t('collectorDropoff') || 'Collector Drop-off (Deliver to facility)'}</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                    {t('scheduledDate') || 'Scheduled Date'}
+                  </label>
+                  <input
+                    type="date"
+                    value={pickupDate}
+                    onChange={(e) => setPickupDate(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                    {t('scheduledTime') || 'Scheduled Time'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 11:00 AM"
+                    value={pickupTime}
+                    onChange={(e) => setPickupTime(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                  {t('pickupLocation') || 'Meeting / Facility Location'}
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Near Gunupur Bus Stand, Rayagada"
+                  value={pickupLocation}
+                  onChange={(e) => setPickupLocation(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                  {t('pickupNotes') || 'Coordination Notes (Optional)'}
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Packed in 2 burlap bags, ready for pickup"
+                  value={pickupNotes}
+                  onChange={(e) => setPickupNotes(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                />
+              </div>
+
+              {pickupError && (
+                <div style={{ color: '#dc2626', fontSize: '0.78rem' }}>{pickupError}</div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '0.5rem' }}>
+                <Button variant="outline" fullWidth onClick={() => setPickupModalTx(null)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" fullWidth onClick={handleSavePickupSubmit}>
+                  {t('confirmPickupSchedule') || 'Save Schedule'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Handover Modal */}
       {handoverModalTx && (

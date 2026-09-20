@@ -12,7 +12,9 @@ import {
   Bell,
   Sparkles,
   TrendingUp,
-  X
+  X,
+  Recycle,
+  Wrench
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -29,6 +31,7 @@ import {
   MOCK_NEARBY_BUYERS 
 } from '../../data/mockData';
 import { getScrapLotsByCollector } from '../../services/scrapLotService';
+import { calculateCollectorImpact } from '../../services/environmentalImpactService';
 
 export const CollectorDashboard = () => {
   const navigate = useNavigate();
@@ -37,6 +40,7 @@ export const CollectorDashboard = () => {
 
   const activeCollectorId = user?.userId || 'usr-collector-01';
   const myLots = getScrapLotsByCollector(activeCollectorId);
+  const impact = calculateCollectorImpact(activeCollectorId);
 
   const [activeModal, setActiveModal] = useState(null); // 'prices', 'safety', 'notifications'
   const [selectedBuyer, setSelectedBuyer] = useState(null);
@@ -211,18 +215,108 @@ export const CollectorDashboard = () => {
             {/* 4. Safety */}
             <Card
               interactive
-              onClick={() => setActiveModal('safety')}
+              onClick={() => navigate('/collector/safety')}
               style={{ padding: '1.1rem 1rem', background: '#fffafb', border: '1.5px solid #fecaca' }}
             >
               <div style={{ fontSize: '1.85rem', marginBottom: '0.35rem' }}>🛡️</div>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#dc2626', marginBottom: '2px' }}>
-                {t('safety')}
+                {t('safety', 'Safety')}
               </h3>
               <p style={{ fontSize: '0.78rem', color: '#991b1b' }}>
-                Safety Guidelines
+                {t('safetyGuidelines', 'Safety Guidelines')}
               </p>
             </Card>
           </div>
+        </div>
+
+        {/* MODULE 11: MY ENVIRONMENTAL IMPACT */}
+        <div style={{ marginBottom: '1.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '1.2rem' }}>🌱</span>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                {t('myImpact', 'My Impact')}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/collector/insights')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#15803d',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '2px'
+              }}
+            >
+              <span>{t('insights', 'Insights')}</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          <Card style={{ padding: '1.15rem', border: '1.5px solid #bbf7d0', background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '0.85rem' }}>
+              <div style={{ background: '#ffffff', padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', fontWeight: 700, textTransform: 'uppercase' }}>
+                  {t('scrapHandled', 'Scrap Handled')}
+                </span>
+                <span style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0f172a' }}>
+                  {impact.totalScrapHandledKg} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>kg</span>
+                </span>
+              </div>
+
+              <div style={{ background: '#ffffff', padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block', fontWeight: 700, textTransform: 'uppercase' }}>
+                  {t('divertedWeight', 'Diverted from Landfill')}
+                </span>
+                <span style={{ fontSize: '1.35rem', fontWeight: 900, color: '#15803d' }}>
+                  {impact.divertedWeightKg} <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>kg</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Reuse vs Recycling Mini Breakdown */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '0.75rem' }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: '#fef3c7', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                <Wrench size={14} color="#b45309" />
+                <span style={{ fontSize: '0.76rem', color: '#92400e', fontWeight: 700 }}>
+                  {t('pathwayReuse', 'Reuse')}: {impact.reuseWeightKg} kg
+                </span>
+              </div>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', background: '#e0f2fe', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                <Recycle size={14} color="#0369a1" />
+                <span style={{ fontSize: '0.76rem', color: '#075985', fontWeight: 700 }}>
+                  {t('pathwayRecycle', 'Recycle')}: {impact.recyclingWeightKg} kg
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed #cbd5e1', paddingTop: '0.65rem' }}>
+              <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                ⚠️ {t('prototypeEstimate', 'Prototype environmental estimate')}
+              </span>
+              <button
+                type="button"
+                onClick={() => navigate('/collector/insights')}
+                style={{
+                  background: '#15803d',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                {t('viewInsights', 'View Insights →')}
+              </button>
+            </div>
+          </Card>
         </div>
 
         {/* NEARBY BUYERS PREVIEW */}

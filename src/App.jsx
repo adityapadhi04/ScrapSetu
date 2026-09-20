@@ -14,6 +14,8 @@ import {
   CollectorEarningsPage,
   CollectorProfilePage
 } from './pages/collector/CollectorSubpages';
+import SafetyPage from './pages/collector/SafetyPage';
+import CollectorInsightsPage from './pages/collector/CollectorInsightsPage';
 import RecyclerDashboard from './pages/recycler/RecyclerDashboard';
 import {
   RecyclerLotsPage,
@@ -32,6 +34,7 @@ import {
   RepairShopProfilePage
 } from './pages/repair-shop/RepairShopSubpages';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import SyncStatusPage from './pages/shared/SyncStatusPage';
 
 import { OfflineBanner } from './components/common/OfflineState';
 
@@ -59,6 +62,8 @@ function AppLayout() {
             <Route path="/collector/transactions" element={<CollectorTransactionsPage />} />
             <Route path="/collector/earnings" element={<CollectorEarningsPage />} />
             <Route path="/collector/profile" element={<CollectorProfilePage />} />
+            <Route path="/collector/safety" element={<SafetyPage />} />
+            <Route path="/collector/insights" element={<CollectorInsightsPage />} />
           </Route>
 
           {/* 2. Recycler Protected Routes */}
@@ -85,6 +90,11 @@ function AppLayout() {
           {/* 4. Admin Protected Routes */}
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/admin" element={<AdminDashboard />} />
+          </Route>
+
+          {/* 5. Shared: Sync Status — accessible to all authenticated roles */}
+          <Route element={<ProtectedRoute allowedRoles={['collector', 'recycler', 'repair', 'repair-shop', 'admin']} />}>
+            <Route path="/sync-status" element={<SyncStatusPage />} />
           </Route>
 
           {/* Catch-all fallback */}

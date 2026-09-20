@@ -15,6 +15,7 @@
 
 import { SEED_HANDOVERS } from '../data/handoverSeedData.js';
 import { _patchTransactionFields, checkAndCompleteTransaction } from './transactionService.js';
+import { enqueue } from './syncQueueService.js';
 
 export const STORAGE_KEY_HANDOVERS = 'scrapsetu_handovers';
 
@@ -162,6 +163,21 @@ export const createHandover = (data) => {
     // Non-fatal — transaction may not exist in test env
   }
 
+  // Queue for sync — only platform_generated handovers
+  if (newHandover.sourceType !== 'demo_seed') {
+    try {
+      enqueue({
+        operation: 'create',
+        entityType: 'handover',
+        entityId: newHandover.handoverId,
+        payload: { handoverId: newHandover.handoverId, transactionId: newHandover.transactionId, status: newHandover.handoverStatus },
+        userId: newHandover.collectorId,
+      });
+    } catch (qErr) {
+      console.warn('[handoverService] Could not enqueue sync operation:', qErr.message);
+    }
+  }
+
   return newHandover;
 };
 
@@ -234,6 +250,25 @@ export const confirmCollectorHandover = (handoverId, requestingCollectorId) => {
     }
   }
 
+  // Queue update for sync if platform_generated
+  if (handovers[index].sourceType !== 'demo_seed') {
+    try {
+      enqueue({
+        operation: 'update',
+        entityType: 'handover',
+        entityId: handover.handoverId,
+        payload: {
+          handoverId: handover.handoverId,
+          handoverStatus: handovers[index].handoverStatus,
+          collectorConfirmed: true
+        },
+        userId: requestingCollectorId,
+      });
+    } catch (qErr) {
+      console.warn('[handoverService] Could not enqueue sync operation:', qErr.message);
+    }
+  }
+
   return handovers[index];
 };
 
@@ -276,6 +311,25 @@ export const confirmBuyerReceipt = (handoverId, requestingBuyerId) => {
       checkAndCompleteTransaction(handover.transactionId);
     } catch (err) {
       // Non-fatal
+    }
+  }
+
+  // Queue update for sync if platform_generated
+  if (handovers[index].sourceType !== 'demo_seed') {
+    try {
+      enqueue({
+        operation: 'update',
+        entityType: 'handover',
+        entityId: handover.handoverId,
+        payload: {
+          handoverId: handover.handoverId,
+          handoverStatus: handovers[index].handoverStatus,
+          buyerConfirmed: true
+        },
+        userId: requestingBuyerId,
+      });
+    } catch (qErr) {
+      console.warn('[handoverService] Could not enqueue sync operation:', qErr.message);
     }
   }
 

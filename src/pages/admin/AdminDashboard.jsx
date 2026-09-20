@@ -30,9 +30,18 @@ import {
   MapPin,
   Phone,
   QrCode,
-  LogOut
+  LogOut,
+  Wifi,
+  WifiOff,
+  RefreshCw as RefreshIcon,
+  RotateCcw,
+  ShieldAlert,
+  AlertOctagon,
+  AlertTriangle
 } from 'lucide-react';
 import PageContainer from '../../components/common/PageContainer';
+import { AdminAnalyticsPage } from './AdminAnalyticsPage';
+import { getPlatformOverview } from '../../services/adminAnalyticsService';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
@@ -44,7 +53,6 @@ import { useLanguage } from '../../context/LanguageContext';
 import { EmptyState, StatusIndicator } from '../../components/common/FeedbackStates';
 import { 
   CORE_MATERIAL_GROUPS, 
-  MOCK_ADMIN_METRICS, 
   MOCK_ADMIN_COLLECTORS,
   MOCK_ADMIN_REPAIR_SHOPS,
   MOCK_ADMIN_RECYCLERS,
@@ -83,8 +91,32 @@ import {
   getPayments,
   getPaymentStats
 } from '../../services/paymentService';
-import { getScrapLots } from '../../services/scrapLotService';
-
+import {
+  getPickups,
+  getPickupStats
+} from '../../services/pickupService';
+import { getQueueStats, getQueue } from '../../services/syncQueueService';
+import { syncPendingChanges, retryFailedOperations, getSyncingStatus } from '../../services/syncEngine';
+import {
+  getMlDataset,
+  getMlDatasetStats,
+  syncMlDataset,
+  exportMlDatasetToCsvText
+} from '../../services/mlDatasetService';
+import {
+  predictScrapPrice,
+  detectAnomalies,
+  scanDatasetForAnomalies,
+  explainPrediction
+} from '../../services/mlIntelligenceService';
+import {
+  extractFeatures,
+  getFeatureSchema
+} from '../../services/mlFeatureService';
+import { isOnline } from '../../services/offlineService';
+import { calculatePlatformImpact } from '../../services/environmentalImpactService';
+import { getAllSafetyCatalog, getHazardSummaryForLots, HAZARD_LEVELS } from '../../services/safetyGuidanceService';
+import { getAllScrapLots } from '../../services/scrapLotService';
 
 export const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -139,9 +171,22 @@ export const AdminDashboard = () => {
   const [txnFilterStatus, setTxnFilterStatus] = useState('ALL');
   const [txnFilterBuyerRole, setTxnFilterBuyerRole] = useState('ALL');
   const [txnFilterPaymentStatus, setTxnFilterPaymentStatus] = useState('ALL');
+  const [mlRecords, setMlRecords] = useState(() => getMlDataset());
+  const [selectedMlRecord, setSelectedMlRecord] = useState(null);
+
+  // Pickup Coordination State (Module 14)
+  const [pickupRecords, setPickupRecords] = useState(() => getPickups());
+  const [pickupSearchTerm, setPickupSearchTerm] = useState('');
+  const [pickupFilterStatus, setPickupFilterStatus] = useState('ALL');
+  const [pickupFilterBuyerRole, setPickupFilterBuyerRole] = useState('ALL');
+  const [pickupFilterMethod, setPickupFilterMethod] = useState('ALL');
+  const [selectedPickupJson, setSelectedPickupJson] = useState(null);
+  const pickupStats = getPickupStats();
+
   const txnStats = getTransactionStats();
   const handoverStats = getHandoverStats();
   const paymentStats = getPaymentStats();
+  const platformOverview = getPlatformOverview();
 
   const sidebarItems = [
     { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
@@ -151,14 +196,19 @@ export const AdminDashboard = () => {
     { id: 'materials', label: t('materials'), icon: Layers, count: materials.length },
     { id: 'prices', label: t('prices'), icon: DollarSign },
     { id: 'lots', label: t('lots'), icon: Package, count: MOCK_ADMIN_LOTS.length },
+    { id: 'ml-dataset', label: t('mlDataset') || 'AI/ML Dataset', icon: Cpu, count: mlRecords.length },
     { id: 'material-dataset', label: t('materialDataset'), icon: Database, count: datasetRecords.length },
     { id: 'price-dataset', label: t('priceDataset'), icon: IndianRupee, count: priceRecords.length },
     { id: 'recycler-dataset', label: t('recyclerDataset'), icon: Recycle, count: recyclerRecords.length },
     { id: 'offers-dataset', label: t('offersDataset'), icon: DollarSign, count: offerRecords.length },
     { id: 'transactions', label: t('transactions'), icon: FileText, count: txnRecords.length },
+    { id: 'pickup-coordination', label: t('pickupCoordination') || 'Pickup Coordination', icon: MapPin, count: pickupRecords.length },
     { id: 'traceability', label: t('traceability'), icon: QrCode },
+    { id: 'environmental-impact', label: t('environmentalImpact') || 'Environmental Impact', icon: Recycle },
+    { id: 'safety-overview', label: t('safetyOverview') || 'Safety & Hazards', icon: ShieldAlert },
     { id: 'analytics', label: t('analytics'), icon: BarChart3 },
     { id: 'settings', label: t('settings'), icon: Settings },
+    { id: 'sync-monitor', label: t('syncMonitor') || 'Sync Monitor', icon: Wifi },
   ];
 
   const handleUpdatePrice = (e) => {
@@ -370,10 +420,10 @@ export const AdminDashboard = () => {
                     <Users size={18} color="#15803d" />
                   </div>
                   <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a' }}>
-                    {MOCK_ADMIN_METRICS.totalCollectors}
+                    {platformOverview.collectors.distinct}
                   </div>
                   <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>
-                    ↑ 18 registered this week
+                    {platformOverview.lots.total} registered scrap lots
                   </span>
                 </Card>
 
@@ -385,10 +435,10 @@ export const AdminDashboard = () => {
                     <Store size={18} color="#d97706" />
                   </div>
                   <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a' }}>
-                    {MOCK_ADMIN_METRICS.totalRepairShops}
+                    {platformOverview.partners.repairShops.total}
                   </div>
                   <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600 }}>
-                    Circular reuse partners
+                    {platformOverview.partners.repairShops.active} active reuse partners
                   </span>
                 </Card>
 
@@ -400,10 +450,10 @@ export const AdminDashboard = () => {
                     <Recycle size={18} color="#0284c7" />
                   </div>
                   <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a' }}>
-                    {MOCK_ADMIN_METRICS.totalRecyclers}
+                    {platformOverview.partners.recyclers.total}
                   </div>
                   <span style={{ fontSize: '0.75rem', color: '#0284c7', fontWeight: 600 }}>
-                    Authorized Facilities
+                    {platformOverview.partners.recyclers.active} authorized facilities
                   </span>
                 </Card>
 
@@ -415,10 +465,10 @@ export const AdminDashboard = () => {
                     <IndianRupee size={18} color="#7c3aed" />
                   </div>
                   <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0f172a' }}>
-                    {MOCK_ADMIN_METRICS.totalTransactions}
+                    {platformOverview.transactions.total}
                   </div>
                   <span style={{ fontSize: '0.75rem', color: '#7c3aed', fontWeight: 600 }}>
-                    {MOCK_ADMIN_METRICS.totalPayouts} total payouts
+                    ₹{(platformOverview.payments.totalRecordedValue || 0).toLocaleString('en-IN')} total recorded value
                   </span>
                 </Card>
               </div>
@@ -2399,6 +2449,210 @@ export const AdminDashboard = () => {
           })()}
 
           {/* =========================================================================
+              VIEW: PICKUP COORDINATION (MODULE 14)
+              ========================================================================= */}
+          {activeSection === 'pickup-coordination' && (() => {
+            const filteredPickups = pickupRecords.filter((p) => {
+              const matchStatus = pickupFilterStatus === 'ALL' || p.status === pickupFilterStatus;
+              const matchBuyerRole =
+                pickupFilterBuyerRole === 'ALL' ||
+                p.buyerRole === pickupFilterBuyerRole ||
+                (pickupFilterBuyerRole === 'repair' && (p.buyerRole === 'repair-shop' || p.buyerRole === 'repair'));
+              const matchMethod = pickupFilterMethod === 'ALL' || p.method === pickupFilterMethod;
+              const matchSearch =
+                !pickupSearchTerm.trim() ||
+                (p.pickupId && p.pickupId.toLowerCase().includes(pickupSearchTerm.toLowerCase())) ||
+                (p.transactionId && p.transactionId.toLowerCase().includes(pickupSearchTerm.toLowerCase())) ||
+                (p.lotId && p.lotId.toLowerCase().includes(pickupSearchTerm.toLowerCase())) ||
+                (p.collectorId && p.collectorId.toLowerCase().includes(pickupSearchTerm.toLowerCase())) ||
+                (p.buyerId && p.buyerId.toLowerCase().includes(pickupSearchTerm.toLowerCase())) ||
+                (p.location && p.location.toLowerCase().includes(pickupSearchTerm.toLowerCase()));
+              return matchStatus && matchBuyerRole && matchMethod && matchSearch;
+            });
+
+            return (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>🚚 {t('pickupCoordination') || 'Pickup Coordination'}</h2>
+                    <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                      {t('pickupCoordinationSubtitle') || 'Material transfer and collection coordination between collectors and buyers'}
+                    </p>
+                  </div>
+                  <Badge variant="neutral">{filteredPickups.length} of {pickupRecords.length}</Badge>
+                </div>
+
+                {/* Stats Row */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  {[
+                    { label: 'Total Pickups', value: pickupStats.total, color: '#0f172a' },
+                    { label: 'Requested', value: pickupStats.requested, color: '#d97706' },
+                    { label: 'Scheduled', value: pickupStats.scheduled, color: '#0284c7' },
+                    { label: 'Completed', value: pickupStats.completed, color: '#15803d' },
+                    { label: 'Cancelled', value: pickupStats.cancelled, color: '#dc2626' },
+                  ].map(({ label, value, color }) => (
+                    <Card key={label} style={{ padding: '0.85rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color }}>{value}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>{label}</div>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Filters Row */}
+                <Card style={{ padding: '1rem', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                      <input
+                        type="text"
+                        placeholder="Search pickup, transaction, lot, collector, buyer, location..."
+                        value={pickupSearchTerm}
+                        onChange={(e) => setPickupSearchTerm(e.target.value)}
+                        style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                      />
+                    </div>
+                    <select
+                      value={pickupFilterStatus}
+                      onChange={(e) => setPickupFilterStatus(e.target.value)}
+                      style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    >
+                      <option value="ALL">All Statuses</option>
+                      <option value="requested">Requested</option>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                    <select
+                      value={pickupFilterBuyerRole}
+                      onChange={(e) => setPickupFilterBuyerRole(e.target.value)}
+                      style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    >
+                      <option value="ALL">All Buyer Roles</option>
+                      <option value="recycler">Recycler</option>
+                      <option value="repair">Repair Shop</option>
+                    </select>
+                    <select
+                      value={pickupFilterMethod}
+                      onChange={(e) => setPickupFilterMethod(e.target.value)}
+                      style={{ padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                    >
+                      <option value="ALL">All Methods</option>
+                      <option value="buyer_pickup">Buyer Pickup</option>
+                      <option value="collector_dropoff">Collector Drop-off</option>
+                    </select>
+                  </div>
+                </Card>
+
+                {/* Pickups Table */}
+                <Card style={{ overflow: 'hidden', padding: 0 }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
+                          <th style={{ padding: '0.75rem 0.85rem', fontWeight: 700 }}>Pickup ID</th>
+                          <th style={{ padding: '0.75rem 0.85rem', fontWeight: 700 }}>Transaction / Lot</th>
+                          <th style={{ padding: '0.75rem 0.85rem', fontWeight: 700 }}>Collector</th>
+                          <th style={{ padding: '0.75rem 0.85rem', fontWeight: 700 }}>Buyer (Role)</th>
+                          <th style={{ padding: '0.75rem 0.85rem', fontWeight: 700 }}>Method</th>
+                          <th style={{ padding: '0.75rem 0.85rem', fontWeight: 700 }}>Scheduled & Location</th>
+                          <th style={{ padding: '0.75rem 0.85rem', fontWeight: 700 }}>Status</th>
+                          <th style={{ padding: '0.75rem 0.85rem', fontWeight: 700 }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPickups.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                              {t('noPickupsFound') || 'No pickup coordination records found.'}
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredPickups.map((p) => {
+                            const statusBadgeVariant =
+                              p.status === 'completed'
+                                ? 'success'
+                                : p.status === 'scheduled'
+                                ? 'info'
+                                : p.status === 'cancelled'
+                                ? 'error'
+                                : 'warning';
+
+                            return (
+                              <tr key={p.pickupId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '0.7rem 0.85rem', fontFamily: 'monospace', fontWeight: 700 }}>
+                                  {p.pickupId}
+                                </td>
+                                <td style={{ padding: '0.7rem 0.85rem' }}>
+                                  <div style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{p.transactionId}</div>
+                                  <div style={{ color: '#64748b', fontSize: '0.72rem' }}>{p.lotId || '—'}</div>
+                                </td>
+                                <td style={{ padding: '0.7rem 0.85rem' }}>
+                                  <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.collectorId}</span>
+                                </td>
+                                <td style={{ padding: '0.7rem 0.85rem' }}>
+                                  <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.buyerId}</span>
+                                  <span style={{ color: '#64748b', fontSize: '0.72rem', marginLeft: '4px' }}>({p.buyerRole})</span>
+                                </td>
+                                <td style={{ padding: '0.7rem 0.85rem' }}>
+                                  {p.method === 'buyer_pickup' ? '🚚 Buyer Pickup' : '🏢 Collector Drop-off'}
+                                </td>
+                                <td style={{ padding: '0.7rem 0.85rem' }}>
+                                  {p.scheduledDate ? (
+                                    <div>
+                                      <span>📅 {p.scheduledDate} {p.scheduledTime || ''}</span>
+                                      {p.location && <div style={{ color: '#64748b', fontSize: '0.72rem' }}>📍 {p.location}</div>}
+                                    </div>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8' }}>Not scheduled</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '0.7rem 0.85rem' }}>
+                                  <Badge variant={statusBadgeVariant}>
+                                    {p.status.toUpperCase()}
+                                  </Badge>
+                                </td>
+                                <td style={{ padding: '0.7rem 0.85rem' }}>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setSelectedPickupJson(p)}
+                                    style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                                  >
+                                    View
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                {/* Pickup Details Modal */}
+                {selectedPickupJson && (
+                  <Modal
+                    isOpen={!!selectedPickupJson}
+                    onClose={() => setSelectedPickupJson(null)}
+                    title={`Pickup Record: ${selectedPickupJson.pickupId}`}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      <pre style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '6px', fontSize: '0.75rem', overflowX: 'auto', border: '1px solid #e2e8f0', maxHeight: '350px' }}>
+                        {JSON.stringify(selectedPickupJson, null, 2)}
+                      </pre>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button variant="outline" size="sm" onClick={() => setSelectedPickupJson(null)}>
+                          Close
+                        </Button>
+                      </div>
+                    </div>
+                  </Modal>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* =========================================================================
               VIEW 9: TRACEABILITY
               ========================================================================= */}
           {activeSection === 'traceability' && (() => {
@@ -2533,60 +2787,10 @@ export const AdminDashboard = () => {
           })()}
 
           {/* =========================================================================
-              VIEW 10: ANALYTICS (CLEAN PROTOTYPE PLACEHOLDER)
+              VIEW 10: ANALYTICS (Module 12 — Admin Platform Analytics)
               ========================================================================= */}
           {activeSection === 'analytics' && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <div>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>📈 Regional E-Waste Flow & Impact Analytics</h2>
-                  <p style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                    Aggregated circular metrics and formalization impact (Planned for Module 10)
-                  </p>
-                </div>
-                <Badge variant="neutral">Prototype Preview</Badge>
-              </div>
-
-              <div className="grid-cols-3" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
-                <Card>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Total Diverted from Landfill
-                  </span>
-                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#15803d', marginTop: '4px' }}>
-                    48.6 Metric Tons
-                  </div>
-                  <span style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>Across Mumbai metropolitan area</span>
-                </Card>
-
-                <Card>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Circular Reuse Rate
-                  </span>
-                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#d97706', marginTop: '4px' }}>
-                    28.4%
-                  </div>
-                  <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600 }}>Diverted to repair shops before smelting</span>
-                </Card>
-
-                <Card>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
-                    Average Collector Income Increase
-                  </span>
-                  <div style={{ fontSize: '2rem', fontWeight: 800, color: '#0284c7', marginTop: '4px' }}>
-                    +34%
-                  </div>
-                  <span style={{ fontSize: '0.75rem', color: '#0284c7', fontWeight: 600 }}>vs informal middleman rates</span>
-                </Card>
-              </div>
-
-              <Card style={{ padding: '2rem', textAlign: 'center', background: '#f8fafc', border: '2px dashed #cbd5e1' }}>
-                <BarChart3 size={44} color="#64748b" style={{ margin: '0 auto 0.75rem auto' }} />
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '4px' }}>Deep Analytics Engine Coming in Future Module</h3>
-                <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '520px', margin: '0 auto' }}>
-                  Full multi-dimensional time-series graphs, geospatial aggregation maps, and carbon offset calculations will be integrated during Module 10.
-                </p>
-              </Card>
-            </div>
+            <AdminAnalyticsPage />
           )}
 
           {/* =========================================================================
@@ -2709,6 +2913,525 @@ export const AdminDashboard = () => {
           </form>
         )}
       </Modal>
+
+      {/* SYNC MONITOR — View Only, Admin cannot edit user data */}
+      {activeSection === 'sync-monitor' && (
+        <AdminSyncMonitor t={t} />
+      )}
+
+      {/* MODULE 11: ENVIRONMENTAL IMPACT OVERVIEW */}
+      {activeSection === 'environmental-impact' && (
+        <AdminEnvironmentalOverview t={t} />
+      )}
+
+      {/* MODULE 11: SAFETY & HAZARDS OVERVIEW */}
+      {activeSection === 'safety-overview' && (
+        <AdminSafetyOverview t={t} />
+      )}
+
+      {/* MODULE 13: AI/ML DATASET + INTELLIGENCE FOUNDATION */}
+      {activeSection === 'ml-dataset' && (
+        <AdminMlDatasetView
+          t={t}
+          records={mlRecords}
+          onRefresh={() => setMlRecords(syncMlDataset())}
+          onSelectRecord={(rec) => setSelectedMlRecord(rec)}
+        />
+      )}
+    </div>
+  );
+};
+
+/**
+ * AdminSyncMonitor component — monitoring only, no data editing.
+ */
+const AdminSyncMonitor = ({ t }) => {
+  const [stats, setStats] = React.useState({ total: 0, pending: 0, syncing: 0, synced: 0, failed: 0, conflict: 0 });
+  const [queue, setQueue] = React.useState([]);
+  const [isSyncing, setIsSyncing] = React.useState(false);
+  const [online, setOnline] = React.useState(true);
+  const [lastSync, setLastSync] = React.useState(null);
+  const [msg, setMsg] = React.useState(null);
+
+  const refresh = React.useCallback(() => {
+    try {
+      setStats(getQueueStats());
+      setQueue([...getQueue()].reverse().slice(0, 15));
+      setIsSyncing(getSyncingStatus());
+      setOnline(isOnline());
+    } catch {}
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+    const iv = setInterval(refresh, 2500);
+    return () => clearInterval(iv);
+  }, [refresh]);
+
+  const handleSyncNow = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setMsg(null);
+    try {
+      const r = await syncPendingChanges();
+      setLastSync(new Date().toLocaleTimeString());
+      setMsg(r.processed === 0 ? 'No pending operations.' : `${r.succeeded} synced, ${r.failed} failed.`);
+    } catch (e) { setMsg('Sync error: ' + e.message); }
+    finally { setIsSyncing(false); refresh(); }
+  };
+
+  const handleRetry = async () => {
+    const n = retryFailedOperations(true);
+    setMsg(n === 0 ? 'No retryable items.' : `${n} item(s) reset. Starting sync...`);
+    refresh();
+    if (n > 0) setTimeout(handleSyncNow, 400);
+  };
+
+  const STATUS_MAP = { pending: { e: '⏳', c: '#d97706' }, syncing: { e: '🔄', c: '#1d4ed8' }, synced: { e: '✓', c: '#15803d' }, failed: { e: '✗', c: '#dc2626' }, conflict: { e: '⚠', c: '#7c3aed' } };
+  const ENTITY_MAP = { scrap_lot: '📦 Scrap Lot', offer: '💬 Offer', transaction: '📋 Transaction', handover: '🤝 Handover', payment: '💰 Payment', material: '🔩 Material' };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>📡 {t('syncMonitor') || 'Sync Monitor'}</h2>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '4px',
+              padding: '2px 8px', borderRadius: '99px', fontSize: '0.75rem', fontWeight: 700,
+              background: online ? '#f0fdf4' : '#fffbeb',
+              color: online ? '#15803d' : '#b45309',
+              border: `1px solid ${online ? '#dcfce7' : '#fde68a'}`
+            }}>
+              {online ? <Wifi size={12} /> : <WifiOff size={12} />}
+              {online ? (t('online') || 'Online') : (t('offline') || 'Offline')}
+            </span>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0' }}>{t('prototypeSyncLabel') || 'Prototype Sync — Local simulation only. Admin monitoring only.'}</p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {lastSync && (
+            <span style={{ fontSize: '0.78rem', color: '#64748b', marginRight: '4px' }}>
+              {t('lastSyncTime') || 'Last Sync'}: {lastSync}
+            </span>
+          )}
+          <Button variant="primary" size="sm" icon={RefreshIcon} onClick={handleSyncNow} disabled={isSyncing || !online}>
+            {isSyncing ? (t('syncing') || 'Syncing...') : (t('syncNow') || 'Sync Now')}
+          </Button>
+          {stats.failed > 0 && (
+            <Button variant="outline" size="sm" icon={RotateCcw} onClick={handleRetry} disabled={isSyncing}>
+              {t('retrySync') || 'Retry Failed'} ({stats.failed})
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {msg && (
+        <div style={{ padding: '0.65rem 1rem', borderRadius: '8px', marginBottom: '1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontWeight: 600, fontSize: '0.85rem' }}>
+          {msg}
+        </div>
+      )}
+
+      <div className="grid-cols-4" style={{ marginBottom: '1.5rem', gap: '1rem' }}>
+        {[['Pending Operations', stats.pending, '#d97706'], ['Syncing', stats.syncing, '#1d4ed8'], ['Synced', stats.synced, '#15803d'], ['Failed', stats.failed, '#dc2626']].map(([l, v, c]) => (
+          <Card key={l}><div style={{ textAlign: 'center' }}><div style={{ fontSize: '1.6rem', fontWeight: 800, color: c }}>{v}</div><div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{l}</div></div></Card>
+        ))}
+      </div>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #f1f5f9' }}>
+          <strong>Recent Queue Operations ({stats.total} total)</strong>
+        </div>
+        {queue.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>Queue is empty.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+              <thead><tr style={{ background: '#f8fafc', color: '#475569', fontWeight: 700 }}>
+                <th style={{ padding: '0.6rem 1rem', textAlign: 'left' }}>Queue ID</th>
+                <th style={{ padding: '0.6rem 1rem', textAlign: 'left' }}>Entity Type</th>
+                <th style={{ padding: '0.6rem 1rem', textAlign: 'left' }}>Entity ID</th>
+                <th style={{ padding: '0.6rem 1rem', textAlign: 'left' }}>Op</th>
+                <th style={{ padding: '0.6rem 1rem', textAlign: 'left' }}>Status</th>
+                <th style={{ padding: '0.6rem 1rem', textAlign: 'left' }}>Retries</th>
+                <th style={{ padding: '0.6rem 1rem', textAlign: 'left' }}>User</th>
+              </tr></thead>
+              <tbody>
+                {queue.map(item => {
+                  const sc = STATUS_MAP[item.status] || { e: '?', c: '#64748b' };
+                  return (
+                    <tr key={item.queueId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', fontWeight: 700 }}>{item.queueId}</td>
+                      <td style={{ padding: '0.6rem 1rem' }}>{ENTITY_MAP[item.entityType] || item.entityType}</td>
+                      <td style={{ padding: '0.6rem 1rem', fontFamily: 'monospace', color: '#334155' }}>{item.entityId}</td>
+                      <td style={{ padding: '0.6rem 1rem', textTransform: 'capitalize', color: '#64748b' }}>{item.operation}</td>
+                      <td style={{ padding: '0.6rem 1rem' }}><span style={{ color: sc.c, fontWeight: 700 }}>{sc.e} {item.status}</span></td>
+                      <td style={{ padding: '0.6rem 1rem', color: item.retryCount > 0 ? '#dc2626' : '#94a3b8', fontWeight: 600 }}>{item.retryCount}/3</td>
+                      <td style={{ padding: '0.6rem 1rem', color: '#64748b', fontSize: '0.78rem' }}>{item.userId || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+      <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.75rem' }}>
+        ⚠️ Admin monitoring only. User data cannot be modified from this screen.
+      </p>
+    </div>
+  );
+};
+
+/**
+ * AdminEnvironmentalOverview component — Platform-wide environmental metrics and mass diversion.
+ */
+const AdminEnvironmentalOverview = ({ t }) => {
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const impact = calculatePlatformImpact();
+
+  const materialEntries = Object.entries(impact.materialTotals || {});
+  const filteredMaterials = materialEntries.filter(([cat]) =>
+    !searchTerm.trim() || cat.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>
+              🌱 {t('environmentalImpact') || 'Environmental Impact & Mass Diversion'}
+            </h2>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '99px' }}>
+              CPCB Circular Oversight
+            </span>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0' }}>
+            Aggregated mass diversion, circular reuse recovery, and formal recycling pathways.
+          </p>
+        </div>
+      </div>
+
+      {/* Prototype factor methodology disclaimer */}
+      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.5rem', fontSize: '0.8rem', color: '#166534', lineHeight: 1.4 }}>
+        <strong>ℹ️ Prototype Environmental Calculation:</strong> Metrics represent estimated material mass diverted from informal burning, unlined open dumping, and backyard acid extraction based on 1 kg/kg mass conservation. No certified carbon credits or government regulatory offsets are claimed.
+      </div>
+
+      {/* Metric Cards */}
+      <div className="grid-cols-4" style={{ marginBottom: '1.75rem', gap: '1rem' }}>
+        <Card style={{ borderLeft: '4px solid #15803d' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            Total Scrap Handled
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0f172a', margin: '4px 0' }}>
+            {impact.totalScrapHandledKg} <span style={{ fontSize: '0.9rem', color: '#64748b' }}>kg</span>
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
+            {impact.totalLotsCount} recorded scrap lots
+          </span>
+        </Card>
+
+        <Card style={{ borderLeft: '4px solid #0284c7' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            Diverted from Landfill
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#0284c7', margin: '4px 0' }}>
+            {impact.divertedWeightKg} <span style={{ fontSize: '0.9rem', color: '#64748b' }}>kg</span>
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#0369a1', fontWeight: 600 }}>
+            {impact.completedTransactionsCount} completed handovers
+          </span>
+        </Card>
+
+        <Card style={{ borderLeft: '4px solid #d97706' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            Repair / Reuse Stream
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#d97706', margin: '4px 0' }}>
+            {impact.reuseWeightKg} <span style={{ fontSize: '0.9rem', color: '#64748b' }}>kg</span>
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 600 }}>
+            Modular repair shop reuse
+          </span>
+        </Card>
+
+        <Card style={{ borderLeft: '4px solid #16a34a' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            Formal Recycling Stream
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#16a34a', margin: '4px 0' }}>
+            {impact.recyclingWeightKg} <span style={{ fontSize: '0.9rem', color: '#64748b' }}>kg</span>
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>
+            Authorized CPCB recyclers
+          </span>
+        </Card>
+      </div>
+
+      {/* Material Breakdown Table */}
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <strong>Material Category Mass Breakdown ({impact.distinctMaterialsCount} materials)</strong>
+          <input
+            type="text"
+            placeholder="Search material..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ padding: '4px 8px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+          />
+        </div>
+
+        {filteredMaterials.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+            No material transaction data recorded yet.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', color: '#475569', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'left' }}>Material Category</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'right' }}>Total Weight (kg)</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'right' }}>Share of Total</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'left' }}>Primary Ecological Benefit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMaterials.map(([cat, w]) => {
+                  const share = impact.divertedWeightKg > 0 ? Math.round((w / impact.divertedWeightKg) * 100) : 0;
+                  return (
+                    <tr key={cat} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.65rem 1rem', fontWeight: 700, color: '#0f172a' }}>{cat}</td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'right', fontWeight: 800, color: '#15803d' }}>
+                        {Math.round(w * 10) / 10} kg
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'right', fontWeight: 600, color: '#64748b' }}>
+                        {share}%
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', color: '#475569', fontSize: '0.8rem' }}>
+                        Mass diverted from open dumping; secondary raw materials retained in production cycle.
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+/**
+ * AdminSafetyOverview component — Platform hazards and material safety catalog overview.
+ */
+const AdminSafetyOverview = ({ t }) => {
+  const lots = getAllScrapLots();
+  const summary = getHazardSummaryForLots(lots);
+  const catalog = getAllSafetyCatalog();
+
+  const [selectedHazardFilter, setSelectedHazardFilter] = React.useState('ALL');
+  const [lotSearchTerm, setLotSearchTerm] = React.useState('');
+
+  const filteredLots = lots.filter((lot) => {
+    const mat = lot.materialType || lot.materialCategory || '';
+    const cond = lot.condition || 'fair';
+    const isHigh = mat.toLowerCase().includes('battery') && cond === 'damaged';
+    const level = isHigh ? 'high' : cond === 'damaged' ? 'medium' : 'low';
+
+    const matchesFilter = selectedHazardFilter === 'ALL' || level === selectedHazardFilter.toLowerCase();
+    const matchesSearch = !lotSearchTerm.trim() ||
+      lot.id.toLowerCase().includes(lotSearchTerm.toLowerCase()) ||
+      mat.toLowerCase().includes(lotSearchTerm.toLowerCase()) ||
+      cond.toLowerCase().includes(lotSearchTerm.toLowerCase());
+
+    return matchesFilter && matchesSearch;
+  });
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>
+              🛡️ {t('safetyOverview') || 'Safety Guidance & Hazards Overview'}
+            </h2>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#dc2626', background: '#fee2e2', padding: '2px 8px', borderRadius: '99px' }}>
+              Worker Safeguards
+            </span>
+          </div>
+          <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '4px 0 0' }}>
+            Material hazard tracking, high-risk scrap isolation, and handling protocols for informal collectors.
+          </p>
+        </div>
+      </div>
+
+      {/* Safety Risk Summary Cards */}
+      <div className="grid-cols-4" style={{ marginBottom: '1.75rem', gap: '1rem' }}>
+        <Card style={{ borderLeft: '4px solid #dc2626' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#dc2626', textTransform: 'uppercase' }}>
+            High Risk Lots
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#dc2626', margin: '4px 0' }}>
+            {summary.highRisk}
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#991b1b', fontWeight: 600 }}>
+            Damaged batteries, shattered displays
+          </span>
+        </Card>
+
+        <Card style={{ borderLeft: '4px solid #d97706' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#d97706', textTransform: 'uppercase' }}>
+            Medium Risk Lots
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#d97706', margin: '4px 0' }}>
+            {summary.mediumRisk}
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 600 }}>
+            PCBs, intact displays, burnt cables
+          </span>
+        </Card>
+
+        <Card style={{ borderLeft: '4px solid #15803d' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>
+            Low Risk Lots
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#15803d', margin: '4px 0' }}>
+            {summary.lowRisk}
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 600 }}>
+            Standard cables, motors, phones
+          </span>
+        </Card>
+
+        <Card style={{ borderLeft: '4px solid #6366f1' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#4338ca', textTransform: 'uppercase' }}>
+            Safety Catalog Entries
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#4338ca', margin: '4px 0' }}>
+            {catalog.length}
+          </div>
+          <span style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>
+            100% offline coverage
+          </span>
+        </Card>
+      </div>
+
+      {/* High-Risk / Monitored Lots Table */}
+      <Card style={{ padding: 0, overflow: 'hidden', marginBottom: '2rem' }}>
+        <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <strong>Scrap Lots Hazard Monitoring ({filteredLots.length} matching)</strong>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <select
+              value={selectedHazardFilter}
+              onChange={(e) => setSelectedHazardFilter(e.target.value)}
+              style={{ padding: '4px 8px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+            >
+              <option value="ALL">All Hazard Levels</option>
+              <option value="HIGH">High Risk Only</option>
+              <option value="MEDIUM">Medium Risk</option>
+              <option value="LOW">Low Risk</option>
+            </select>
+            <input
+              type="text"
+              placeholder="Search lot / material..."
+              value={lotSearchTerm}
+              onChange={(e) => setLotSearchTerm(e.target.value)}
+              style={{ padding: '4px 8px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+            />
+          </div>
+        </div>
+
+        {filteredLots.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>
+            No scrap lots found matching the selected filter.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', color: '#475569', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'left' }}>Lot ID</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'left' }}>Material</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'left' }}>Condition</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'right' }}>Weight</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'left' }}>Collector</th>
+                  <th style={{ padding: '0.65rem 1rem', textAlign: 'left' }}>Key Safety Protocol</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLots.map((lot) => {
+                  const mat = lot.materialType || lot.materialCategory;
+                  const isHigh = mat?.toLowerCase().includes('battery') && lot.condition === 'damaged';
+                  return (
+                    <tr key={lot.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.65rem 1rem', fontFamily: 'monospace', fontWeight: 700 }}>{lot.id}</td>
+                      <td style={{ padding: '0.65rem 1rem', fontWeight: 700 }}>{mat}</td>
+                      <td style={{ padding: '0.65rem 1rem', textTransform: 'capitalize' }}>
+                        <span style={{
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          background: lot.condition === 'damaged' ? '#fee2e2' : '#f1f5f9',
+                          color: lot.condition === 'damaged' ? '#b91c1c' : '#334155'
+                        }}>
+                          {lot.condition}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.65rem 1rem', textAlign: 'right', fontWeight: 700 }}>{lot.weight} {lot.weightUnit}</td>
+                      <td style={{ padding: '0.65rem 1rem', color: '#64748b' }}>{lot.collectorId}</td>
+                      <td style={{ padding: '0.65rem 1rem', fontSize: '0.78rem', color: isHigh ? '#dc2626' : '#475569', fontWeight: isHigh ? 800 : 500 }}>
+                        {isHigh ? '🚨 Isolate immediately in dry sand. Do not puncture or crush.' : 'Follow standard PPE and separate handling.'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Material Safety Catalog Reference Grid */}
+      <div>
+        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', marginBottom: '0.75rem' }}>
+          📖 Material Safety Reference Catalog ({catalog.length} categories)
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
+          {catalog.map((entry) => (
+            <Card key={entry.id} style={{ padding: '1rem', border: `1.5px solid ${entry.borderColor || '#e2e8f0'}`, background: '#ffffff' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '1.4rem' }}>{entry.icon}</span>
+                  <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>{entry.materialCategory}</strong>
+                </div>
+                <span style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 800,
+                  padding: '2px 8px',
+                  borderRadius: '99px',
+                  background: entry.hazardLevel === 'high' ? '#fee2e2' : entry.hazardLevel === 'medium' ? '#fef3c7' : '#f0fdf4',
+                  color: entry.hazardLevel === 'high' ? '#dc2626' : entry.hazardLevel === 'medium' ? '#d97706' : '#15803d',
+                  textTransform: 'uppercase'
+                }}>
+                  {entry.hazardLevel} Risk
+                </span>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#dc2626', fontWeight: 700, marginBottom: '6px' }}>
+                🛑 Prohibited: {entry.doNotActions?.[0] || 'Do not burn or chemically extract'}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                ✓ Safe handling: {entry.handlingGuidance?.[0]}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };

@@ -3,31 +3,50 @@ node_modules/
 .pnp
 .pnp.js
 
-# Testing
-coverage/
-
-# Production
+# Production build
 dist/
 build/
 
-# Misc
-.DS_Store
-*.pem
+# Testing and coverage
+coverage/
+.nyc_output/
 
-# Debug
+# Environment and sensitive credential files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+id_rsa*
+*.token
+*credentials*.json
+*secret*.json
+
+# Logs and debug output
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Local env files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# IDE
-.vscode/
-.idea/
+# OS metadata & temporary files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+*.tmp
+*.temp
 *.swp
 *.swo
+
+# IDE & editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Local test scratch scripts and test input images
+scratch*
+test_ewaste_photo.jpg

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { 
   Wrench, 
@@ -14,13 +14,14 @@ import {
   Search, 
   Filter, 
   Check, 
-  Sparkles,
+  Sparkles, 
   MapPin,
   Phone,
   ShieldCheck,
   User,
   ShoppingBag,
-  LogOut
+  LogOut,
+  RefreshCw
 } from 'lucide-react';
 import PageContainer from '../../components/common/PageContainer';
 import Card from '../../components/common/Card';
@@ -43,6 +44,9 @@ import {
 import { getWantedItems, createWantedItem, deleteWantedItem } from '../../services/repairShopService';
 import { getOffersForBuyer } from '../../services/offerService';
 import { getTransactionsByBuyer } from '../../services/transactionService';
+import { getAllScrapLots } from '../../services/scrapLotService';
+import { subscribeToRealtimeSync } from '../../services/realtimeSync';
+import MakeOfferModal from '../../components/marketplace/MakeOfferModal';
 import { 
   createHandover,
   confirmBuyerReceipt,
@@ -54,6 +58,14 @@ import {
   VALID_PAYMENT_METHODS 
 } from '../../services/paymentService';
 import DigitalScrapReceipt from '../../components/transactions/DigitalScrapReceipt';
+import {
+  getPickupsByBuyer,
+  getPickupByTransactionId,
+  createPickupRequest,
+  schedulePickup,
+  completePickup,
+  cancelPickup
+} from '../../services/pickupService';
 
 /**
  * Reusable Repair Shop Navigation Bar
@@ -107,23 +119,57 @@ export const RepairShopNavBar = () => {
 export const RepairShopComponentsPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const [components] = useState(MOCK_REPAIR_SHOP_COMPONENTS);
+  const { user } = useAuth();
+  const activeShopId = user?.repairShopId || ((user?.userId?.startsWith('SHOP')) ? user.userId : 'SHOP-0002');
+  const shopName = user?.name || 'Om Electronics & Laptop Care';
+
+  const loadComponentsData = () => {
+    const rawLots = getAllScrapLots();
+    if (rawLots && rawLots.length > 0) {
+      return rawLots.map((lot) => {
+        const displayLocation = typeof lot.location === 'string'
+          ? lot.location
+          : (lot.location?.area || lot.location?.city || 'Local Collector');
+        return {
+          id: lot.id,
+          rawLot: lot,
+          name: lot.materialType || lot.materialCategory,
+          collector: lot.collectorId || 'Local Collector',
+          location: displayLocation,
+          condition: lot.condition,
+          availableQty: `${lot.weight} ${lot.weightUnit || 'kg'}`,
+          estimatedPrice: lot.estimatedPrice ? `₹${lot.estimatedPrice}/kg` : (lot.priceEstimate?.priceRangeFormatted || 'Market Rate')
+        };
+      });
+    }
+    return MOCK_REPAIR_SHOP_COMPONENTS;
+  };
+
+  const [components, setComponents] = useState(loadComponentsData);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedComponent, setSelectedComponent] = useState(null);
-  const [bidAmount, setBidAmount] = useState('');
+  const [selectedLotForOffer, setSelectedLotForOffer] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const refreshComponents = () => {
+    setIsSyncing(true);
+    setComponents(loadComponentsData());
+    setTimeout(() => setIsSyncing(false), 300);
+  };
+
+  // Real-time synchronization subscription
+  useEffect(() => {
+    refreshComponents();
+    const unsubscribe = subscribeToRealtimeSync(() => {
+      refreshComponents();
+    });
+    return () => unsubscribe();
+  }, []);
 
   const filtered = components.filter((c) =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.condition.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.collector.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const handleOfferSubmit = (e) => {
-    e.preventDefault();
-    alert(`Offer of ₹${bidAmount} sent to collector ${selectedComponent.collector} for ${selectedComponent.name}! (Demo)`);
-    setSelectedComponent(null);
-    setBidAmount('');
-  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '3rem' }}>
@@ -134,8 +180,49 @@ export const RepairShopComponentsPage = () => {
               <ArrowLeft size={20} />
             </button>
             <div>
-              <h1 style={{ fontSize: '1.4rem', fontWeight: 800 }}>🔧 {t('components')}</h1>
-              <p style={{ fontSize: '0.82rem', color: '#64748b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h1 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0 }}>🔧 {t('components')}</h1>
+                <span style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  background: '#ecfdf5', 
+                  border: '1px solid #a7f3d0', 
+                  color: '#065f46', 
+                  fontSize: '0.74rem', 
+                  fontWeight: 700, 
+                  padding: '2px 8px', 
+                  borderRadius: '999px' 
+                }}>
+                  <span style={{ 
+                    width: '7px', 
+                    height: '7px', 
+                    borderRadius: '50%', 
+                    background: isSyncing ? '#f59e0b' : '#10b981',
+                    boxShadow: isSyncing ? '0 0 6px #f59e0b' : '0 0 6px #10b981'
+                  }} />
+                  {isSyncing ? 'Syncing...' : 'Real-Time Sync Active'}
+                </span>
+                <button
+                  onClick={refreshComponents}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    color: '#475569'
+                  }}
+                >
+                  <RefreshCw size={12} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                  Refresh
+                </button>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
                 Reusable e-waste parts salvaged by local collectors before scrap shredding
               </p>
             </div>
@@ -184,7 +271,7 @@ export const RepairShopComponentsPage = () => {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Package size={14} color="#d97706" />
-                    <span>Available Quantity: <strong>{item.availableQty} units</strong></span>
+                    <span>Available Quantity: <strong>{item.availableQty}</strong></span>
                   </div>
                 </div>
 
@@ -197,8 +284,18 @@ export const RepairShopComponentsPage = () => {
                     variant="accent"
                     size="sm"
                     onClick={() => {
-                      setSelectedComponent(item);
-                      setBidAmount(item.estimatedPrice.replace(/[^0-9]/g, '') || '500');
+                      if (item.rawLot) {
+                        setSelectedLotForOffer(item.rawLot);
+                      } else {
+                        setSelectedLotForOffer({
+                          id: item.id,
+                          materialCategory: item.name,
+                          weight: 1,
+                          weightUnit: 'units',
+                          condition: item.condition,
+                          estimatedPrice: parseInt(item.estimatedPrice.replace(/[^0-9]/g, ''), 10) || 500
+                        });
+                      }
                     }}
                   >
                     💰 Make Offer
@@ -209,35 +306,21 @@ export const RepairShopComponentsPage = () => {
           </div>
         )}
 
-        {/* Modal: Make Offer */}
-        <Modal
-          isOpen={!!selectedComponent}
-          onClose={() => setSelectedComponent(null)}
-          title={`Make Offer for ${selectedComponent?.name}`}
-        >
-          {selectedComponent && (
-            <form onSubmit={handleOfferSubmit}>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
-                Propose a competitive purchase price directly to collector <strong>{selectedComponent.collector}</strong>. When accepted, payment is held in demo escrow until component handover.
-              </p>
-              <Input
-                label="Your Offer Amount (₹)"
-                type="number"
-                value={bidAmount}
-                onChange={(e) => setBidAmount(e.target.value)}
-                required
-              />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '1.25rem' }}>
-                <Button type="button" variant="outline" onClick={() => setSelectedComponent(null)}>
-                  Cancel
-                </Button>
-                <Button type="submit" variant="accent">
-                  Send Offer to Collector
-                </Button>
-              </div>
-            </form>
-          )}
-        </Modal>
+        {/* Modal: Make Real Marketplace Offer */}
+        {selectedLotForOffer && (
+          <MakeOfferModal
+            isOpen={!!selectedLotForOffer}
+            onClose={() => setSelectedLotForOffer(null)}
+            lot={selectedLotForOffer}
+            buyerRole="repair"
+            buyerId={activeShopId}
+            buyerName={shopName}
+            onOfferSubmitted={() => {
+              setSelectedLotForOffer(null);
+              refreshComponents();
+            }}
+          />
+        )}
 
         {/* LOWER-LEFT: Account Switcher */}
         <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
@@ -714,6 +797,15 @@ export const RepairShopTransactionsPage = () => {
   const [paymentRefNote, setPaymentRefNote] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
+  // Module 14 Pickup modal state
+  const [pickupModalTx, setPickupModalTx] = useState(null);
+  const [pickupMethod, setPickupMethod] = useState('collector_dropoff');
+  const [pickupDate, setPickupDate] = useState('');
+  const [pickupTime, setPickupTime] = useState('');
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [pickupNotes, setPickupNotes] = useState('');
+  const [pickupError, setPickupError] = useState('');
+
   const refreshList = () => {
     setTransactions(getTransactionsByBuyer(activeBuyerId));
   };
@@ -758,6 +850,67 @@ export const RepairShopTransactionsPage = () => {
     setPaymentMethod('Cash');
     setPaymentRefNote('');
     setPaymentError('');
+  };
+
+  const handleOpenPickup = (tx) => {
+    setPickupModalTx(tx);
+    const existing = getPickupByTransactionId(tx.transactionId);
+    if (existing) {
+      setPickupMethod(existing.method || 'collector_dropoff');
+      setPickupDate(existing.scheduledDate || '');
+      setPickupTime(existing.scheduledTime || '');
+      setPickupLocation(existing.location || '');
+      setPickupNotes(existing.notes || '');
+    } else {
+      setPickupMethod('collector_dropoff');
+      setPickupDate('');
+      setPickupTime('');
+      setPickupLocation('');
+      setPickupNotes('');
+    }
+    setPickupError('');
+  };
+
+  const handleSavePickupSubmit = () => {
+    if (!pickupModalTx) return;
+    try {
+      const existing = getPickupByTransactionId(pickupModalTx.transactionId);
+      if (existing) {
+        schedulePickup(existing.pickupId, {
+          method: pickupMethod,
+          scheduledDate: pickupDate,
+          scheduledTime: pickupTime,
+          location: pickupLocation,
+          notes: pickupNotes,
+        }, user);
+      } else {
+        createPickupRequest({
+          transactionId: pickupModalTx.transactionId,
+          lotId: pickupModalTx.lotId,
+          collectorId: pickupModalTx.collectorId,
+          buyerId: activeBuyerId,
+          buyerRole: 'repair',
+          method: pickupMethod,
+          scheduledDate: pickupDate,
+          scheduledTime: pickupTime,
+          location: pickupLocation,
+          notes: pickupNotes,
+        }, user);
+      }
+      refreshList();
+      setPickupModalTx(null);
+    } catch (err) {
+      setPickupError(err.message || 'Failed to save pickup coordination');
+    }
+  };
+
+  const handleCompletePickupAction = (pickupId) => {
+    try {
+      completePickup(pickupId, { notes: 'Material inspected and received at repair shop.' }, user);
+      refreshList();
+    } catch (err) {
+      alert(err.message || 'Failed to complete pickup');
+    }
   };
 
   const handleSavePaymentSubmit = () => {
@@ -833,6 +986,39 @@ export const RepairShopTransactionsPage = () => {
                       <p style={{ fontSize: '0.85rem', color: '#475569' }}>
                         {tx.weight} {tx.weightUnit} • Collector: <strong>{tx.collectorName}</strong>
                       </p>
+                      {/* Module 14: Coordination Status */}
+                      {(() => {
+                        const pkp = getPickupByTransactionId(tx.transactionId);
+                        return (
+                          <div style={{ margin: '0.4rem 0', padding: '0.45rem 0.65rem', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.76rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                              <span>
+                                🚚 <strong>{pkp ? (pkp.method === 'buyer_pickup' ? 'Shop Pickup' : 'Collector Drop-off') : 'Coordination'}:</strong>{' '}
+                                {pkp ? pkp.status.toUpperCase() : 'NOT SET'}
+                                {pkp?.scheduledDate ? ` (📅 ${pkp.scheduledDate} ${pkp.scheduledTime || ''})` : ''}
+                              </span>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPickup(tx)}
+                                  style={{ background: 'none', border: 'none', color: '#15803d', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: '0.74rem' }}
+                                >
+                                  {pkp ? '✏️ Update' : '+ Schedule'}
+                                </button>
+                                {pkp?.status === 'scheduled' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCompletePickupAction(pkp.pickupId)}
+                                    style={{ background: 'none', border: 'none', color: '#0284c7', fontWeight: 700, cursor: 'pointer', padding: 0, fontSize: '0.74rem', marginLeft: '6px' }}
+                                  >
+                                    ✓ Completed
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div style={{ textAlign: 'right' }}>

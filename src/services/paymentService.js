@@ -24,6 +24,7 @@
 
 import { SEED_PAYMENTS } from '../data/paymentSeedData.js';
 import { _patchTransactionFields, checkAndCompleteTransaction } from './transactionService.js';
+import { enqueue } from './syncQueueService.js';
 
 export const STORAGE_KEY_PAYMENTS = 'scrapsetu_payments';
 
@@ -179,6 +180,22 @@ export const createPaymentRecord = (data) => {
     checkAndCompleteTransaction(data.transactionId);
   } catch (err) {
     // Non-fatal
+  }
+
+  // Queue for sync — only platform_generated payment records
+  // IMPORTANT: Do NOT claim this is a real payment verification.
+  if (newPayment.sourceType !== 'demo_seed') {
+    try {
+      enqueue({
+        operation: 'create',
+        entityType: 'payment',
+        entityId: newPayment.paymentId,
+        payload: { paymentId: newPayment.paymentId, transactionId: newPayment.transactionId, status: newPayment.paymentStatus },
+        userId: newPayment.collectorId,
+      });
+    } catch (qErr) {
+      console.warn('[paymentService] Could not enqueue sync operation:', qErr.message);
+    }
   }
 
   return newPayment;

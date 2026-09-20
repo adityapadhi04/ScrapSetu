@@ -23,10 +23,16 @@ import Input from '../../components/common/Input';
 import AccountSwitcher from '../../components/common/AccountSwitcher';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import {
+  getPickups,
+  getPickupsByBuyer,
+  schedulePickup,
+  completePickup,
+  cancelPickup
+} from '../../services/pickupService';
 import { 
   MOCK_RECYCLER_DATA, 
-  MOCK_RECYCLER_LOTS, 
-  MOCK_RECYCLER_PICKUPS 
+  MOCK_RECYCLER_LOTS
 } from '../../data/mockData';
 import { getRecyclerById, getActiveRecyclers } from '../../services/recyclerService';
 import { getOffersForBuyer } from '../../services/offerService';
@@ -190,8 +196,88 @@ export const RecyclerLotsPage = () => {
  */
 export const RecyclerPickupsPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { t } = useLanguage();
+  const activeBuyerId = user?.userId || 'REC-0001';
+
+  const [pickups, setPickups] = useState([]);
   const [selectedPickup, setSelectedPickup] = useState(null);
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [schedDate, setSchedDate] = useState('');
+  const [schedTime, setSchedTime] = useState('');
+  const [schedLoc, setSchedLoc] = useState('');
+  const [schedNotes, setSchedNotes] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const [showCancelModal, setShowCancelModal] = useState(false);
+
+  const loadPickups = () => {
+    let list = getPickupsByBuyer(activeBuyerId, 'recycler');
+    if (!list || list.length === 0) {
+      list = getPickups().filter((p) => p.buyerRole === 'recycler');
+    }
+    setPickups(list);
+  };
+
+  useEffect(() => {
+    loadPickups();
+  }, [activeBuyerId]);
+
+  const handleOpenSchedule = (pkp) => {
+    setSelectedPickup(pkp);
+    setSchedDate(pkp.scheduledDate || '');
+    setSchedTime(pkp.scheduledTime || '');
+    setSchedLoc(pkp.location || '');
+    setSchedNotes(pkp.notes || '');
+    setIsScheduling(true);
+  };
+
+  const handleConfirmSchedule = () => {
+    if (!selectedPickup) return;
+    try {
+      schedulePickup(selectedPickup.pickupId, {
+        scheduledDate: schedDate,
+        scheduledTime: schedTime,
+        location: schedLoc,
+        notes: schedNotes,
+      }, user);
+      loadPickups();
+      setIsScheduling(false);
+      setSelectedPickup(null);
+    } catch (err) {
+      alert(err.message || 'Scheduling failed');
+    }
+  };
+
+  const handleMarkComplete = (pickupId) => {
+    try {
+      completePickup(pickupId, { notes: 'Material verified and received at recycler facility.' }, user);
+      loadPickups();
+      setSelectedPickup(null);
+    } catch (err) {
+      alert(err.message || 'Failed to complete pickup');
+    }
+  };
+
+  const handleCancel = () => {
+    if (!selectedPickup) return;
+    try {
+      cancelPickup(selectedPickup.pickupId, cancelReason || 'Buyer requested cancellation', user);
+      loadPickups();
+      setShowCancelModal(false);
+      setSelectedPickup(null);
+    } catch (err) {
+      alert(err.message || 'Failed to cancel pickup');
+    }
+  };
+
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'completed': return <Badge variant="success">✓ Completed</Badge>;
+      case 'scheduled': return <Badge variant="info">📅 Scheduled</Badge>;
+      case 'cancelled': return <Badge variant="error">✕ Cancelled</Badge>;
+      default: return <Badge variant="warning">⏳ Requested</Badge>;
+    }
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '2.5rem' }}>
@@ -200,84 +286,200 @@ export const RecyclerPickupsPage = () => {
           <button onClick={() => navigate('/recycler')} className="btn btn-ghost" style={{ padding: '6px' }}>
             <ArrowLeft size={20} />
           </button>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>🚚 {t('pickupRequests')}</h1>
+          <div>
+            <h1 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0 }}>🚚 {t('pickupCoordination') || 'Pickup & Collection Coordination'}</h1>
+            <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '2px 0 0' }}>
+              {t('pickupCoordinationSubtitle') || 'Material transfer and collection coordination between collectors and buyers'}
+            </p>
+          </div>
         </div>
 
         <RecyclerNavBar />
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {MOCK_RECYCLER_PICKUPS.map((pickup) => (
-            <Card key={pickup.lotId} style={{ padding: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                      Lot ID: {pickup.lotId}
-                    </span>
-                    <Badge variant="warning">{pickup.statusBadge}</Badge>
-                  </div>
-                  <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{pickup.material}</h2>
-                  <p style={{ fontSize: '0.85rem', color: '#475569' }}>
-                    Approximate weight: <strong>{pickup.approxWeight}</strong>
-                  </p>
-                  <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
-                    Pickup area: {pickup.pickupArea}
-                  </p>
-                </div>
+        {pickups.length === 0 ? (
+          <Card style={{ textAlign: 'center', padding: '3rem 1.5rem', border: '1.5px dashed #cbd5e1' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>🚚</div>
+            <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a' }}>{t('noPickupsFound') || 'No pickup coordination records found.'}</h2>
+            <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Pickup requests will appear here when collectors coordinate accepted offers.</p>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {pickups.map((pickup) => (
+              <Card key={pickup.pickupId} style={{ padding: '1.25rem', borderLeft: `5px solid ${pickup.status === 'completed' ? '#16a34a' : (pickup.status === 'scheduled' ? '#0284c7' : '#d97706')}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700, color: '#0f172a' }}>
+                        {pickup.pickupId}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#64748b' }}>
+                        Txn: {pickup.transactionId}
+                      </span>
+                      {getStatusBadge(pickup.status)}
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                        {pickup.method === 'buyer_pickup' ? '• Vehicle Pickup' : '• Facility Drop-off'}
+                      </span>
+                    </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSelectedPickup(pickup)}
-                >
-                  VIEW DETAILS
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '2px 0 6px' }}>
+                      Lot ID: {pickup.lotId || 'Associated Scrap Lot'}
+                    </h3>
+
+                    <div style={{ fontSize: '0.82rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      {pickup.scheduledDate ? (
+                        <div>📅 Scheduled: <strong>{pickup.scheduledDate}</strong> at <strong>{pickup.scheduledTime || 'Flexible'}</strong></div>
+                      ) : (
+                        <div style={{ color: '#d97706', fontWeight: 600 }}>⏳ Date & time not confirmed yet</div>
+                      )}
+                      {pickup.location && (
+                        <div>📍 Location: <strong>{pickup.location}</strong></div>
+                      )}
+                      {pickup.notes && (
+                        <div style={{ color: '#64748b', fontStyle: 'italic' }}>"{pickup.notes}"</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+                    {pickup.status === 'requested' && (
+                      <Button variant="primary" size="sm" onClick={() => handleOpenSchedule(pickup)}>
+                        Confirm / Set Schedule
+                      </Button>
+                    )}
+
+                    {pickup.status === 'scheduled' && (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <Button variant="outline" size="sm" onClick={() => handleOpenSchedule(pickup)}>
+                          Reschedule
+                        </Button>
+                        <Button variant="primary" size="sm" onClick={() => handleMarkComplete(pickup.pickupId)}>
+                          ✓ Mark Completed
+                        </Button>
+                      </div>
+                    )}
+
+                    {pickup.status !== 'completed' && pickup.status !== 'cancelled' && (
+                      <button
+                        onClick={() => { setSelectedPickup(pickup); setShowCancelModal(true); }}
+                        style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '0.74rem', cursor: 'pointer', padding: 0 }}
+                      >
+                        Cancel Coordination
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Schedule / Reschedule Modal */}
+        {isScheduling && selectedPickup && (
+          <Modal
+            isOpen={isScheduling}
+            onClose={() => setIsScheduling(false)}
+            title={`Coordination Schedule: ${selectedPickup.pickupId}`}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '6px', fontSize: '0.82rem' }}>
+                <div>Transaction ID: <strong>{selectedPickup.transactionId}</strong></div>
+                <div>Collector ID: <strong>{selectedPickup.collectorId}</strong></div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                    {t('scheduledDate') || 'Scheduled Date'}
+                  </label>
+                  <input
+                    type="date"
+                    value={schedDate}
+                    onChange={(e) => setSchedDate(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                    {t('scheduledTime') || 'Scheduled Time'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 10:30 AM"
+                    value={schedTime}
+                    onChange={(e) => setSchedTime(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                  {t('pickupLocation') || 'Meeting / Facility Location'}
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Recycler Hub Gate 1, Industrial Area"
+                  value={schedLoc}
+                  onChange={(e) => setSchedLoc(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.8rem', fontWeight: 700, display: 'block', marginBottom: '4px' }}>
+                  {t('pickupNotes') || 'Notes'}
+                </label>
+                <textarea
+                  rows={2}
+                  value={schedNotes}
+                  onChange={(e) => setSchedNotes(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '0.5rem' }}>
+                <Button variant="outline" fullWidth onClick={() => setIsScheduling(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" fullWidth onClick={handleConfirmSchedule}>
+                  Confirm Dispatch Schedule
                 </Button>
               </div>
-            </Card>
-          ))}
-        </div>
-
-        {/* Modal: View Pickup Details */}
-        <Modal
-          isOpen={!!selectedPickup}
-          onClose={() => setSelectedPickup(null)}
-          title={`Pickup Details: Lot ${selectedPickup?.lotId}`}
-        >
-          {selectedPickup && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              <div style={{ padding: '0.85rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Item & Weight</span>
-                <h4 style={{ fontSize: '1.05rem', fontWeight: 700 }}>{selectedPickup.material} ({selectedPickup.approxWeight})</h4>
-                <p style={{ fontSize: '0.82rem', color: '#475569', marginTop: '4px' }}>
-                  Pickup Cluster: <strong>{selectedPickup.pickupArea}</strong>
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b' }}>Status</span>
-                <Badge variant="warning">{selectedPickup.status}</Badge>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #e2e8f0' }}>
-                <span style={{ color: '#64748b' }}>Logistics Assigned</span>
-                <strong>{selectedPickup.driver}</strong>
-              </div>
-
-              <Button
-                variant="secondary"
-                fullWidth
-                onClick={() => {
-                  alert(`Confirming route for ${selectedPickup.lotId}! (Demo)`);
-                  setSelectedPickup(null);
-                }}
-              >
-                Confirm Dispatch Schedule
-              </Button>
             </div>
-          )}
-        </Modal>
+          </Modal>
+        )}
 
-        {/* LOWER-LEFT: Account Switcher */}
+        {/* Cancellation Modal */}
+        {showCancelModal && selectedPickup && (
+          <Modal
+            isOpen={showCancelModal}
+            onClose={() => setShowCancelModal(false)}
+            title={`Cancel Pickup: ${selectedPickup.pickupId}`}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>
+                Please provide a reason for cancelling this pickup schedule.
+              </p>
+              <textarea
+                rows={3}
+                placeholder="e.g. Rescheduling required due to transport delay"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+              />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <Button variant="outline" fullWidth onClick={() => setShowCancelModal(false)}>
+                  Go Back
+                </Button>
+                <Button variant="secondary" fullWidth onClick={handleCancel}>
+                  Confirm Cancellation
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+                {/* LOWER-LEFT: Account Switcher */}
         <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>
           <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
             {t('currentAccount')}

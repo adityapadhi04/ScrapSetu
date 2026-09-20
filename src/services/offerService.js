@@ -13,6 +13,8 @@
 
 import { SEED_OFFERS } from '../data/offerSeedData.js';
 import { getScrapLotsByCollector, updateScrapLotOfferStatus } from './scrapLotService.js';
+import { enqueue } from './syncQueueService.js';
+import { emitDataChange } from './realtimeSync.js';
 
 export const STORAGE_KEY_OFFERS = 'scrapsetu_offers';
 
@@ -50,6 +52,9 @@ export const getOffers = () => {
 const saveOffers = (offers) => {
   try {
     localStorage.setItem(STORAGE_KEY_OFFERS, JSON.stringify(offers));
+    try {
+      emitDataChange('OFFERS_UPDATED', offers);
+    } catch (_) {}
   } catch (err) {
     console.error('Error saving scrapsetu_offers:', err);
   }
@@ -168,6 +173,22 @@ export const createOffer = (offerData) => {
     // Non-fatal if lot service is independent
   }
 
+  // Queue for sync — only platform_user/platform_generated offers
+  // SEED offers (demo_seed) must never be queued
+  if (newOffer.sourceType !== 'demo_seed') {
+    try {
+      enqueue({
+        operation: 'create',
+        entityType: 'offer',
+        entityId: newOffer.offerId,
+        payload: { offerId: newOffer.offerId, lotId: newOffer.lotId, status: newOffer.status },
+        userId: newOffer.buyerId,
+      });
+    } catch (qErr) {
+      console.warn('[offerService] Could not enqueue sync operation:', qErr.message);
+    }
+  }
+
   return newOffer;
 };
 
@@ -276,6 +297,21 @@ export const acceptOffer = (offerId, lotId) => {
     updateScrapLotOfferStatus(lotId, 'offer_selected');
   } catch (err) {
     console.error('Failed to update scrap lot offerStatus:', err);
+  }
+
+  // Queue update for sync if platform_generated
+  if (offers[targetIndex].sourceType !== 'demo_seed') {
+    try {
+      enqueue({
+        operation: 'update',
+        entityType: 'offer',
+        entityId: offerId,
+        payload: { offerId, status: 'accepted', lotId },
+        userId: offers[targetIndex].buyerId || 'collector',
+      });
+    } catch (qErr) {
+      console.warn('[offerService] Could not enqueue sync operation:', qErr.message);
+    }
   }
 
   return offers[targetIndex];

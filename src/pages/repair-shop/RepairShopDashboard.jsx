@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Wrench, 
@@ -15,7 +15,9 @@ import {
   Package,
   ArrowRight,
   ShieldCheck,
-  MapPin
+  MapPin,
+  RefreshCw,
+  Radio
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -37,13 +39,15 @@ import {
 import { getWantedItems, createWantedItem } from '../../services/repairShopService';
 import { getEligibleLotsForRepairShop } from '../../services/offerMatchingService';
 import { getOffersForBuyer } from '../../services/offerService';
+import { getAllScrapLots } from '../../services/scrapLotService';
+import { subscribeToRealtimeSync } from '../../services/realtimeSync';
 import MakeOfferModal from '../../components/marketplace/MakeOfferModal';
 
 export const RepairShopDashboard = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { user } = useAuth();
-  const activeShopId = (user?.userId?.startsWith('SHOP')) ? user.userId : 'SHOP-0001';
+  const activeShopId = user?.repairShopId || ((user?.userId?.startsWith('SHOP')) ? user.userId : 'SHOP-0002');
   const shopName = user?.name || MOCK_REPAIR_SHOP_DATA.shopName;
 
   const [wantedList, setWantedList] = useState(() => {
@@ -51,15 +55,35 @@ export const RepairShopDashboard = () => {
     return items.length > 0 ? items : getWantedItems();
   });
 
-  // Module 8: Eligible Lots and Live Offers State
+  // Module 8: All Lots, Eligible Lots, and Live Offers State
+  const [allLots, setAllLots] = useState(() => getAllScrapLots());
   const [eligibleLots, setEligibleLots] = useState(() => getEligibleLotsForRepairShop(activeShopId));
   const [myOffers, setMyOffers] = useState(() => getOffersForBuyer(activeShopId));
   const [selectedLotForModal, setSelectedLotForModal] = useState(null);
+  const [activeLotsTab, setActiveLotsTab] = useState('all'); // Default to 'all' so every created lot is visible immediately
+  const [lastSyncTime, setLastSyncTime] = useState(new Date());
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  const refreshOffersAndLots = () => {
+  const refreshOffersAndLots = (silent = false) => {
+    if (!silent) setIsSyncing(true);
+    const freshLots = getAllScrapLots();
+    setAllLots(freshLots);
     setEligibleLots(getEligibleLotsForRepairShop(activeShopId));
     setMyOffers(getOffersForBuyer(activeShopId));
+    setLastSyncTime(new Date());
+    if (!silent) {
+      setTimeout(() => setIsSyncing(false), 300);
+    }
   };
+
+  // Real-time synchronization subscription across tabs and in-app actions
+  useEffect(() => {
+    refreshOffersAndLots(true);
+    const unsubscribe = subscribeToRealtimeSync(() => {
+      refreshOffersAndLots(true);
+    });
+    return () => unsubscribe();
+  }, [activeShopId]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState('Laptop / Computer');
@@ -270,105 +294,224 @@ export const RepairShopDashboard = () => {
 
         {/* Module 8: Available Scrap Lots Section */}
         <div style={{ marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
                   📦 {t('availableScrapLots')}
                 </h2>
-                <Badge variant="warning">{eligibleLots.length} Eligible</Badge>
+                <Badge variant="warning">{eligibleLots.length} Matched</Badge>
+                <span style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  background: '#ecfdf5', 
+                  border: '1px solid #a7f3d0', 
+                  color: '#065f46', 
+                  fontSize: '0.74rem', 
+                  fontWeight: 700, 
+                  padding: '2px 8px', 
+                  borderRadius: '999px' 
+                }}>
+                  <span style={{ 
+                    width: '7px', 
+                    height: '7px', 
+                    borderRadius: '50%', 
+                    background: isSyncing ? '#f59e0b' : '#10b981',
+                    boxShadow: isSyncing ? '0 0 6px #f59e0b' : '0 0 6px #10b981'
+                  }} />
+                  {isSyncing ? 'Syncing...' : 'Real-Time Sync Active'}
+                </span>
               </div>
               <p style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '2px' }}>
-                Collector scrap lots matching your repair specialty, active wanted parts, and regional location:
+                Live collector scrap lots updated automatically across sessions and devices:
               </p>
             </div>
+
+            <button
+              onClick={() => refreshOffersAndLots(false)}
+              title="Refresh lots in real time"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                padding: '5px 10px',
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                color: '#334155',
+                fontWeight: 600
+              }}
+            >
+              <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+              Refresh
+            </button>
           </div>
 
-          {eligibleLots.length === 0 ? (
-            <Card style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-              <Package size={36} style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
-              <p style={{ margin: 0, fontWeight: 700 }}>No eligible scrap lots currently available for repair reuse.</p>
-              <span style={{ fontSize: '0.78rem' }}>When local collectors aggregate compatible electronic components, they will appear here.</span>
-            </Card>
-          ) : (
-            <div className="grid-cols-2" style={{ gap: '1rem' }}>
-              {eligibleLots.map((lot) => {
-                const displayLocation = typeof lot.location === 'string'
-                  ? lot.location
-                  : (lot.location?.area || lot.location?.city || 'Local Pickup');
-                return (
-                  <Card key={lot.id} style={{ padding: '1.2rem', border: '1.5px solid #fef3c7', borderRadius: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                      <div>
-                        <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#fef3c7', color: '#b45309', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
-                          {lot.id}
-                        </span>
-                        <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '3px 0 1px 0' }}>
-                          {lot.materialType || lot.materialCategory}
-                        </h3>
-                        <div style={{ fontSize: '0.8rem', color: '#475569' }}>
-                          Weight: <strong style={{ color: '#15803d' }}>{lot.weight} {lot.weightUnit}</strong> • Condition: <strong>{lot.condition}</strong>
+          {/* View Filter Tabs: All Collector Lots vs Matched for Repair */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem' }}>
+            <button
+              type="button"
+              onClick={() => setActiveLotsTab('all')}
+              style={{
+                padding: '7px 16px',
+                borderRadius: '8px',
+                border: '1.5px solid',
+                borderColor: activeLotsTab === 'all' ? '#0284c7' : '#e2e8f0',
+                background: activeLotsTab === 'all' ? '#e0f2fe' : '#ffffff',
+                color: activeLotsTab === 'all' ? '#0369a1' : '#64748b',
+                fontWeight: activeLotsTab === 'all' ? 800 : 600,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: activeLotsTab === 'all' ? '0 1px 3px rgba(2,132,199,0.15)' : 'none'
+              }}
+            >
+              🌐 All Live Collector Lots ({allLots.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveLotsTab('eligible')}
+              style={{
+                padding: '7px 16px',
+                borderRadius: '8px',
+                border: '1.5px solid',
+                borderColor: activeLotsTab === 'eligible' ? '#d97706' : '#e2e8f0',
+                background: activeLotsTab === 'eligible' ? '#fef3c7' : '#ffffff',
+                color: activeLotsTab === 'eligible' ? '#92400e' : '#64748b',
+                fontWeight: activeLotsTab === 'eligible' ? 800 : 600,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                boxShadow: activeLotsTab === 'eligible' ? '0 1px 3px rgba(217,119,6,0.15)' : 'none'
+              }}
+            >
+              ⭐ Matched for Repair ({eligibleLots.length})
+            </button>
+          </div>
+
+          {/* Displayed Lots based on active tab */}
+          {(() => {
+            const displayedLots = activeLotsTab === 'eligible' ? eligibleLots : allLots;
+
+            if (displayedLots.length === 0) {
+              return (
+                <Card style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                  <Package size={36} style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
+                  <p style={{ margin: 0, fontWeight: 700 }}>
+                    {activeLotsTab === 'eligible' 
+                      ? 'No eligible scrap lots currently matched for repair reuse.' 
+                      : 'No collector scrap lots recorded on the platform yet.'}
+                  </p>
+                  <span style={{ fontSize: '0.78rem' }}>
+                    {activeLotsTab === 'eligible'
+                      ? 'Switch to "All Live Collector Lots" above to see raw materials or recycler-bound lots.'
+                      : 'When local collectors aggregate scrap lots, they will appear here in real time.'}
+                  </span>
+                </Card>
+              );
+            }
+
+            return (
+              <div className="grid-cols-2" style={{ gap: '1rem' }}>
+                {displayedLots.map((lot) => {
+                  const isMatched = eligibleLots.some((el) => el.id === lot.id);
+                  const matchedLot = eligibleLots.find((el) => el.id === lot.id) || lot;
+                  const displayLocation = typeof lot.location === 'string'
+                    ? lot.location
+                    : (lot.location?.area || lot.location?.city || 'Local Pickup');
+
+                  const isDamagedBattery = (lot.materialType || lot.materialCategory || '').toLowerCase().includes('battery') && lot.condition === 'damaged';
+
+                  return (
+                    <Card key={lot.id} style={{ padding: '1.2rem', border: isMatched ? '1.5px solid #fef3c7' : '1px solid #e2e8f0', borderRadius: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                        <div>
+                          <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: isMatched ? '#fef3c7' : '#f1f5f9', color: isMatched ? '#b45309' : '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                            {lot.id}
+                          </span>
+                          <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '3px 0 1px 0' }}>
+                            {lot.materialType || lot.materialCategory}
+                          </h3>
+                          <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                            Weight: <strong style={{ color: '#15803d' }}>{lot.weight} {lot.weightUnit}</strong> • Condition: <strong>{lot.condition}</strong>
+                          </div>
                         </div>
+
+                        {isMatched ? (
+                          <Badge variant="warning">
+                            Reuse / Salvage
+                          </Badge>
+                        ) : (
+                          <Badge variant="neutral">
+                            ♻ Recycler Pathway
+                          </Badge>
+                        )}
                       </div>
-                      <Badge variant="warning">
-                        Reuse / Salvage
-                      </Badge>
-                    </div>
 
-                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.65rem' }}>
-                      📍 {displayLocation}
-                    </div>
+                      <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.65rem' }}>
+                        📍 {displayLocation}
+                      </div>
 
-                    {/* Platform Estimated Range */}
-                    <div
-                      style={{
-                        background: '#f8fafc',
-                        padding: '0.5rem 0.75rem',
-                        borderRadius: '8px',
-                        border: '1px solid #e2e8f0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: '0.75rem'
-                      }}
-                    >
-                      <span style={{ fontSize: '0.76rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <IndianRupee size={13} color="#d97706" />
-                        <span>{t('platformEstimate')}:</span>
-                      </span>
-                      <strong style={{ fontSize: '0.86rem', color: '#d97706' }}>
-                        {lot.priceEstimate?.priceRangeFormatted || 'Estimate pending'}
-                      </strong>
-                    </div>
-
-                    {/* Why can I offer checklist */}
-                    {lot.reasons && lot.reasons.length > 0 && (
-                      <div style={{ background: '#fffbeb', padding: '6px 10px', borderRadius: '6px', border: '1px solid #fde68a', marginBottom: '0.85rem' }}>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>
-                          ✓ {t('whyEligible')}
+                      {/* Platform Estimated Range */}
+                      <div
+                        style={{
+                          background: '#f8fafc',
+                          padding: '0.5rem 0.75rem',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: '0.75rem'
+                        }}
+                      >
+                        <span style={{ fontSize: '0.76rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <IndianRupee size={13} color="#d97706" />
+                          <span>{t('platformEstimate')}:</span>
                         </span>
-                        <ul style={{ margin: 0, paddingLeft: '1rem', fontSize: '0.74rem', color: '#b45309' }}>
-                          {lot.reasons.map((r, idx) => (
-                            <li key={idx}>{r}</li>
-                          ))}
-                        </ul>
+                        <strong style={{ fontSize: '0.86rem', color: '#d97706' }}>
+                          {matchedLot.priceEstimate?.priceRangeFormatted || (lot.estimatedPrice ? `₹${lot.estimatedPrice}/kg` : 'Estimate pending')}
+                        </strong>
                       </div>
-                    )}
 
-                    <Button
-                      id={`btn-repair-offer-${lot.id}`}
-                      variant="accent"
-                      size="sm"
-                      fullWidth
-                      onClick={() => setSelectedLotForModal(lot)}
-                    >
-                      💰 {t('makeOffer')}
-                    </Button>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+                      {/* Why can I offer checklist / routing notice */}
+                      {isMatched && matchedLot.reasons && matchedLot.reasons.length > 0 ? (
+                        <div style={{ background: '#fffbeb', padding: '6px 10px', borderRadius: '6px', border: '1px solid #fde68a', marginBottom: '0.85rem' }}>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#92400e', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>
+                            ✓ {t('whyEligible')}
+                          </span>
+                          <ul style={{ margin: 0, paddingLeft: '1rem', fontSize: '0.74rem', color: '#b45309' }}>
+                            {matchedLot.reasons.map((r, idx) => (
+                              <li key={idx}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : !isMatched ? (
+                        <div style={{ background: '#f8fafc', padding: '6px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '0.85rem' }}>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '2px' }}>
+                            {isDamagedBattery ? '⚠️ Hazardous material: routed to authorized recyclers for chemical neutralization' : 'ℹ️ Bulk/Recycling stream: routed to authorized recyclers for industrial recovery'}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      <Button
+                        id={`btn-repair-offer-${lot.id}`}
+                        variant={isMatched ? 'accent' : 'outline'}
+                        size="sm"
+                        fullWidth
+                        onClick={() => setSelectedLotForModal(matchedLot)}
+                      >
+                        💰 {t('makeOffer')}
+                      </Button>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Matching Components from Collectors */}

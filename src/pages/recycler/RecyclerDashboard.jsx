@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Package, 
@@ -9,7 +9,8 @@ import {
   ShieldCheck, 
   MapPin, 
   Filter,
-  ArrowRight
+  ArrowRight,
+  RefreshCw
 } from 'lucide-react';
 import Card from '../../components/common/Card';
 import Badge from '../../components/common/Badge';
@@ -33,6 +34,7 @@ import {
 import { getRecyclerById } from '../../services/recyclerService';
 import { getEligibleLotsForRecycler } from '../../services/offerMatchingService';
 import { getOffersForBuyer } from '../../services/offerService';
+import { subscribeToRealtimeSync } from '../../services/realtimeSync';
 import MakeOfferModal from '../../components/marketplace/MakeOfferModal';
 
 
@@ -59,6 +61,14 @@ export const RecyclerDashboard = () => {
     setEligibleLots(getEligibleLotsForRecycler(activeRecyclerId));
     setMyOffers(getOffersForBuyer(activeRecyclerId));
   };
+
+  useEffect(() => {
+    refreshOffersAndLots();
+    const unsubscribe = subscribeToRealtimeSync(() => {
+      refreshOffersAndLots();
+    });
+    return () => unsubscribe();
+  }, [activeRecyclerId]);
 
 
   // Module 7: Recycler Inquiries State

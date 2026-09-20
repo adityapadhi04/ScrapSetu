@@ -94,7 +94,7 @@ export const isRepairShopEligible = (shop, lot) => {
  */
 export const getEligibleLotsForRepairShop = (shopId) => {
   const shops = getRepairShops();
-  const shop = shops.find((s) => s.id === shopId) || shops[0];
+  const shop = shops.find((s) => s.repairShopId === shopId || s.id === shopId || s.name === shopId) || shops[0];
   if (!shop) return [];
 
   const lots = getAllScrapLots();

@@ -7,6 +7,8 @@
 import { MATERIAL_CATALOG, MATERIAL_OPTIONS as CATALOG_MATERIAL_OPTIONS } from '../data/materialCatalog.js';
 import { createMaterialRecord, resetMaterialDataset } from './materialDatasetService.js';
 import { createPriceRecord, resetPriceDataset } from './priceDatasetService.js';
+import { enqueue } from './syncQueueService.js';
+import { emitDataChange } from './realtimeSync.js';
 
 export const STORAGE_KEY_SCRAP_LOTS = 'scrapsetu_scrap_lots';
 
@@ -338,6 +340,26 @@ export const createScrapLot = ({
     throw e;
   }
 
+  // Queue for sync — only platform_generated records
+  // Seed data (demo_seed) must never enter the sync queue
+  try {
+    enqueue({
+      operation: 'create',
+      entityType: 'scrap_lot',
+      entityId: newLot.id,
+      payload: { id: newLot.id, materialType: newLot.materialType, weight: newLot.weight, status: newLot.status },
+      userId: collectorId,
+    });
+  } catch (qErr) {
+    // Non-fatal: local save succeeded, queue failure must not prevent lot creation
+    console.warn('[scrapLotService] Could not enqueue sync operation:', qErr.message);
+  }
+
+  // Real-time synchronization event
+  try {
+    emitDataChange('LOT_CREATED', newLot);
+  } catch (_) {}
+
   return newLot;
 };
 
@@ -348,6 +370,9 @@ export const resetScrapLots = () => {
   localStorage.setItem(STORAGE_KEY_SCRAP_LOTS, JSON.stringify(SEED_LOTS));
   resetMaterialDataset();
   resetPriceDataset();
+  try {
+    emitDataChange('LOTS_RESET', SEED_LOTS);
+  } catch (_) {}
   return SEED_LOTS;
 };
 
@@ -375,6 +400,7 @@ export const updateScrapLotOfferStatus = (lotId, newOfferStatus) => {
 
   try {
     localStorage.setItem(STORAGE_KEY_SCRAP_LOTS, JSON.stringify(allLots));
+    emitDataChange('LOT_OFFER_STATUS_UPDATED', allLots[index]);
   } catch (e) {
     console.error('Error updating scrap lot offerStatus:', e);
   }
@@ -406,6 +432,7 @@ export const updateScrapLotTransactionStatus = (lotId, newTransactionStatus) => 
 
   try {
     localStorage.setItem(STORAGE_KEY_SCRAP_LOTS, JSON.stringify(allLots));
+    emitDataChange('LOT_TRANSACTION_STATUS_UPDATED', allLots[index]);
   } catch (e) {
     console.error('Error updating scrap lot transactionStatus:', e);
   }
