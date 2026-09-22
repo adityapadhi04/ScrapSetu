@@ -42,9 +42,10 @@ import {
   MOCK_COLLECTOR_TRANSACTIONS
 } from '../../data/mockData';
 import { getWantedItems, createWantedItem, deleteWantedItem } from '../../services/repairShopService';
+import { getEligibleLotsForRepairShop } from '../../services/offerMatchingService';
 import { getOffersForBuyer } from '../../services/offerService';
 import { getTransactionsByBuyer } from '../../services/transactionService';
-import { getAllScrapLots } from '../../services/scrapLotService';
+import { getAllScrapLots, getLotReuseEligibility } from '../../services/scrapLotService';
 import { subscribeToRealtimeSync } from '../../services/realtimeSync';
 import MakeOfferModal from '../../components/marketplace/MakeOfferModal';
 import { 
@@ -125,34 +126,61 @@ export const RepairShopComponentsPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { user } = useAuth();
-  const activeShopId = user?.repairShopId || ((user?.userId?.startsWith('SHOP')) ? user.userId : 'SHOP-0002');
-  const shopName = user?.name || 'Om Electronics & Laptop Care';
+  const activeShopId = user?.repairShopId || ((user?.userId?.startsWith('SHOP')) ? user.userId : (user?.userId || 'SHOP-0002'));
+  const shopName = user?.name || 'Gunupur Digital Clinic';
 
   const loadComponentsData = () => {
-    const rawLots = getAllScrapLots();
-    if (rawLots && rawLots.length > 0) {
-      return rawLots.map((lot) => {
-        const displayLocation = typeof lot.location === 'string'
-          ? lot.location
-          : (lot.location?.area || lot.location?.city || 'Local Collector');
-        return {
-          id: lot.id,
-          rawLot: lot,
-          name: lot.materialType || lot.materialCategory,
-          collector: lot.collectorId || 'Local Collector',
-          location: displayLocation,
-          condition: lot.condition,
-          availableQty: `${lot.weight} ${lot.weightUnit || 'kg'}`,
-          estimatedPrice: lot.estimatedPrice ? `₹${lot.estimatedPrice}/kg` : (lot.priceEstimate?.priceRangeFormatted || 'Market Rate')
-        };
-      });
-    }
-    return MOCK_REPAIR_SHOP_COMPONENTS;
+    const rawLots = getEligibleLotsForRepairShop(activeShopId);
+    if (!rawLots || rawLots.length === 0) return [];
+
+    const eligibleLots = rawLots.filter((lot) => {
+      if (lot.status === 'Sold' || lot.transactionStatus === 'completed') return false;
+      const eligibility = getLotReuseEligibility(lot);
+      return eligibility.isEligibleForRepair;
+    });
+
+    return eligibleLots.map((lot) => {
+      const displayLocation = typeof lot.location === 'string'
+        ? lot.location
+        : (lot.location?.area ? `${lot.location.area}, ${lot.location.city || ''}` : (lot.location?.city || 'Local Collector'));
+      const eligibility = getLotReuseEligibility(lot);
+      const itemsList = Array.isArray(lot.items) && lot.items.length > 0
+        ? lot.items
+        : [{
+            name: lot.materialType || lot.materialCategory || 'Salvage Component',
+            category: lot.materialCategory || lot.materialType,
+            weight: lot.weight,
+            condition: lot.condition || 'fair'
+          }];
+
+      return {
+        id: lot.id,
+        rawLot: lot,
+        name: lot.materialType || lot.materialCategory,
+        materialCategory: lot.materialCategory || lot.materialType,
+        items: itemsList,
+        collector: lot.collectorId || 'Local Collector',
+        location: displayLocation,
+        condition: lot.condition || 'fair',
+        availableQty: `${lot.weight} ${lot.weightUnit || 'kg'}`,
+        weight: lot.weight,
+        weightUnit: lot.weightUnit || 'kg',
+        estimatedPrice: lot.estimatedPrice ? `₹${lot.estimatedPrice}/kg` : (lot.priceEstimate?.priceRangeFormatted || 'Market Rate'),
+        estimatedLotValue: lot.estimatedLotValueMin
+          ? `₹${lot.estimatedLotValueMin} - ₹${lot.estimatedLotValueMax}`
+          : (lot.estimatedPrice ? `₹${Math.round(lot.estimatedPrice * (parseFloat(lot.weight) || 1))}` : '₹500 - ₹1,200'),
+        sourceType: lot.sourceType || 'collector_created',
+        notes: lot.notes || '',
+        createdAt: lot.createdAt,
+        eligibility
+      };
+    });
   };
 
   const [components, setComponents] = useState(loadComponentsData);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLotForOffer, setSelectedLotForOffer] = useState(null);
+  const [viewingLot, setViewingLot] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const refreshComponents = () => {
@@ -170,11 +198,21 @@ export const RepairShopComponentsPage = () => {
     return () => unsubscribe();
   }, []);
 
-  const filtered = components.filter((c) =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.condition.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.collector.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = components.filter((c) => {
+    const term = searchTerm.toLowerCase();
+    const matchesItems = c.items.some((it) =>
+      (it.name && it.name.toLowerCase().includes(term)) ||
+      (it.category && it.category.toLowerCase().includes(term))
+    );
+    return (
+      c.id.toLowerCase().includes(term) ||
+      c.name.toLowerCase().includes(term) ||
+      c.condition.toLowerCase().includes(term) ||
+      c.collector.toLowerCase().includes(term) ||
+      c.location.toLowerCase().includes(term) ||
+      matchesItems
+    );
+  });
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '3rem' }}>
@@ -228,14 +266,14 @@ export const RepairShopComponentsPage = () => {
                 </button>
               </div>
               <p style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
-                Reusable e-waste parts salvaged by local collectors before scrap shredding
+                Complete scrap lots with reusable/salvage components saved before recycling shredders
               </p>
             </div>
           </div>
 
           <div style={{ width: '260px' }}>
             <Input
-              placeholder="Search components or collectors..."
+              placeholder="Search complete lots or items..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -246,69 +284,201 @@ export const RepairShopComponentsPage = () => {
 
         {filtered.length === 0 ? (
           <EmptyState
-            title="No matching components"
-            description="No collector has registered scrap lots matching your search term."
+            title="No matching lots available"
+            description="Only scrap lots created in your registered location are visible to your repair shop."
             actionLabel="Clear Search"
             onAction={() => setSearchTerm('')}
           />
         ) : (
-          <div className="grid-cols-2" style={{ gap: '1rem' }}>
+          <div className="grid-cols-2" style={{ gap: '1.25rem' }}>
             {filtered.map((item) => (
-              <Card key={item.id} style={{ padding: '1.25rem', border: '1px solid #e2e8f0' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.65rem' }}>
-                  <div>
-                    <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                      {item.id}
+              <Card key={item.id} style={{ padding: '1.25rem', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.74rem', fontFamily: 'monospace', background: '#0f172a', color: '#f8fafc', padding: '2px 7px', borderRadius: '4px', fontWeight: 800 }}>
+                        {item.id}
+                      </span>
+                      {item.sourceType === 'demo_seed' ? (
+                        <span style={{ fontSize: '0.68rem', background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                          Demo Seed
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.68rem', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                          Collector Lot
+                        </span>
+                      )}
+                      <span style={{ fontSize: '0.68rem', background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                        ✓ {item.eligibility?.label || 'Reuse / Salvage'}
+                      </span>
+                    </div>
+                    <Badge variant="success">✓ Available</Badge>
+                  </div>
+
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 800, margin: '4px 0 8px 0', color: '#0f172a' }}>
+                    {item.name}
+                  </h3>
+
+                  {/* Complete Constituent Items Breakdown */}
+                  <div style={{ background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0', marginBottom: '0.85rem' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: '5px' }}>
+                      Constituent Items & Materials ({item.items.length}):
                     </span>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: '4px' }}>{item.name}</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      {item.items.map((it, idx) => (
+                        <div key={idx} style={{ fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between', color: '#334155' }}>
+                          <span>• <strong>{it.name || it.category}</strong> {it.subcategory ? `(${it.subcategory})` : ''}</span>
+                          <span style={{ color: '#64748b' }}>{it.weight || 0} kg • {it.condition || 'fair'}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <Badge variant="success">✓ Available</Badge>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem', color: '#475569', marginBottom: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Package size={14} color="#d97706" />
+                      <span>Total Lot Weight: <strong>{item.availableQty}</strong></span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CheckCircle2 size={14} color="#0284c7" />
+                      <span>Overall Condition: <strong>{item.condition}</strong></span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <MapPin size={14} color="#16a34a" />
+                      <span>Collector: <strong>{item.collector}</strong> ({item.location})</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem', color: '#475569', marginBottom: '0.85rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <MapPin size={14} color="#16a34a" />
-                    <span>Collector: <strong>{item.collector}</strong> ({item.location})</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <CheckCircle2 size={14} color="#0284c7" />
-                    <span>Condition: <strong>{item.condition}</strong></span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Package size={14} color="#d97706" />
-                    <span>Available Quantity: <strong>{item.availableQty}</strong></span>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '8px' }}>
                   <div>
                     <span style={{ fontSize: '0.72rem', color: '#64748b', display: 'block' }}>Estimated Value</span>
-                    <strong style={{ fontSize: '1.2rem', color: '#d97706' }}>{item.estimatedPrice}</strong>
+                    <strong style={{ fontSize: '1.15rem', color: '#d97706' }}>{item.estimatedLotValue}</strong>
                   </div>
-                  <Button
-                    variant="accent"
-                    size="sm"
-                    onClick={() => {
-                      if (item.rawLot) {
-                        setSelectedLotForOffer(item.rawLot);
-                      } else {
-                        setSelectedLotForOffer({
-                          id: item.id,
-                          materialCategory: item.name,
-                          weight: 1,
-                          weightUnit: 'units',
-                          condition: item.condition,
-                          estimatedPrice: parseInt(item.estimatedPrice.replace(/[^0-9]/g, ''), 10) || 500
-                        });
-                      }
-                    }}
-                  >
-                    💰 Make Offer
-                  </Button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setViewingLot(item)}
+                    >
+                      View Lot
+                    </Button>
+                    <Button
+                      variant="accent"
+                      size="sm"
+                      onClick={() => setSelectedLotForOffer(item.rawLot)}
+                    >
+                      💰 Make Offer
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))}
           </div>
+        )}
+
+        {/* Modal: View Full Lot Breakdown */}
+        {viewingLot && (
+          <Modal
+            isOpen={!!viewingLot}
+            onClose={() => setViewingLot(null)}
+            title={`Scrap Lot Details: ${viewingLot.id}`}
+            maxWidth="600px"
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>{viewingLot.name}</h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    Registered: {viewingLot.createdAt ? new Date(viewingLot.createdAt).toLocaleString() : 'Recent'}
+                  </span>
+                </div>
+                <Badge variant="success">✓ Available</Badge>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                  Constituent Items Breakdown
+                </span>
+                <div style={{ background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9', textAlign: 'left' }}>
+                        <th style={{ padding: '6px 10px' }}>Item</th>
+                        <th style={{ padding: '6px 10px' }}>Category</th>
+                        <th style={{ padding: '6px 10px' }}>Weight</th>
+                        <th style={{ padding: '6px 10px' }}>Condition</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingLot.items.map((it, idx) => (
+                        <tr key={idx} style={{ borderTop: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 600 }}>{it.name || it.category}</td>
+                          <td style={{ padding: '6px 10px', color: '#64748b' }}>{it.subcategory || it.category}</td>
+                          <td style={{ padding: '6px 10px' }}>{it.weight} kg</td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <span style={{ textTransform: 'capitalize' }}>{it.condition || 'fair'}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem', fontSize: '0.82rem' }}>
+                <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem' }}>Total Weight</span>
+                  <strong>{viewingLot.availableQty}</strong>
+                </div>
+                <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem' }}>Platform Valuation</span>
+                  <strong style={{ color: '#d97706' }}>{viewingLot.estimatedLotValue}</strong>
+                </div>
+                <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem' }}>Collector</span>
+                  <strong>{viewingLot.collector}</strong>
+                </div>
+                <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem' }}>Location</span>
+                  <strong>{viewingLot.location}</strong>
+                </div>
+              </div>
+
+              {viewingLot.notes && (
+                <div style={{ background: '#f0f9ff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bae6fd', marginBottom: '1rem', fontSize: '0.8rem', color: '#0369a1' }}>
+                  <strong>Collector Notes:</strong> {viewingLot.notes}
+                </div>
+              )}
+
+              {viewingLot.eligibility?.reasons && (
+                <div style={{ background: '#ecfdf5', padding: '8px 12px', borderRadius: '6px', border: '1px solid #a7f3d0', marginBottom: '1.25rem', fontSize: '0.78rem', color: '#065f46' }}>
+                  <strong>Circular Economy Classification:</strong>
+                  <ul style={{ margin: '4px 0 0 0', paddingLeft: '1.1rem' }}>
+                    {viewingLot.eligibility.reasons.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <Button variant="outline" onClick={() => setViewingLot(null)}>
+                  Close
+                </Button>
+                <Button
+                  variant="accent"
+                  onClick={() => {
+                    const lotToOffer = viewingLot.rawLot;
+                    setViewingLot(null);
+                    setSelectedLotForOffer(lotToOffer);
+                  }}
+                >
+                  💰 Make Offer on {viewingLot.id}
+                </Button>
+              </div>
+            </div>
+          </Modal>
         )}
 
         {/* Modal: Make Real Marketplace Offer */}
@@ -369,7 +539,7 @@ export const RepairShopWantedPage = () => {
         preferredCondition: newCondition || 'Good',
         quantityNeeded: parseInt(newQuantity, 10) || 5,
         offeringPrice: newPrice || 'Market Rate',
-        location: 'Lamington Road, Mumbai',
+        location: 'College Road Market, Gunupur, Odisha',
         urgency: 'Active Demand'
       });
       setWantedItems([created, ...wantedItems]);
@@ -1352,11 +1522,11 @@ export const RepairShopProfilePage = () => {
             </div>
             <div>
               <span style={{ fontSize: '0.78rem', color: '#64748b', display: 'block' }}>Registration No.</span>
-              <strong style={{ fontSize: '0.95rem', fontFamily: 'monospace' }}>SE-84910/MUM</strong>
+              <strong style={{ fontSize: '0.95rem', fontFamily: 'monospace' }}>SE-765022/GNP</strong>
             </div>
             <div>
               <span style={{ fontSize: '0.78rem', color: '#64748b', display: 'block' }}>Operating Since</span>
-              <strong style={{ fontSize: '0.95rem' }}>2018 (8 Years in Mumbai)</strong>
+              <strong style={{ fontSize: '0.95rem' }}>2018 (8 Years in Gunupur)</strong>
             </div>
             <div>
               <span style={{ fontSize: '0.78rem', color: '#64748b', display: 'block' }}>Salvage Reusability Rate</span>

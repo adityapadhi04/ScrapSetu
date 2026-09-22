@@ -479,70 +479,74 @@ export const CollectorSellPage = () => {
 
     try {
       if (detectedItems && detectedItems.length > 1) {
-        // Multi-Item E-Waste Lot Creation
-        const batchId = `BATCH-${Date.now()}`;
+        // Multi-Item E-Waste Unified Lot Creation (Module 3 & Module 4)
         const totalNumWeight = parseFloat(weight) || 5;
         const weightPerItem = Math.max(0.1, parseFloat((totalNumWeight / detectedItems.length).toFixed(1)));
 
-        const lotsCreated = [];
-        for (let i = 0; i < detectedItems.length; i++) {
-          const item = detectedItems[i];
+        const itemsList = detectedItems.map((item) => {
           const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === item.category);
-          const category = selectedMatObj?.category || item.category;
+          const itemCategory = selectedMatObj?.category || item.category;
           const itemWeight = itemWeights[item.itemId] ? parseFloat(itemWeights[item.itemId]) : weightPerItem;
-
-          const itemPriceEst = estimateFairPrice({
-            materialCategory: category,
-            materialSubcategory: item.subcategory || selectedMatObj?.defaultSubcategory || item.category,
-            weight: itemWeight,
-            weightUnit,
+          return {
+            id: item.itemId,
+            name: item.category,
+            category: itemCategory,
+            subcategory: item.subcategory || selectedMatObj?.defaultSubcategory || item.category,
             condition,
-            location: locationArea
-          });
+            weight: itemWeight
+          };
+        });
 
-          const newLot = createScrapLot({
-            collectorId: activeCollectorId,
-            materialType: item.category,
-            materialCategory: category,
-            materialSubcategory: item.subcategory || selectedMatObj?.defaultSubcategory || item.category,
-            photo,
-            weight: itemWeight,
-            weightUnit,
-            condition,
-            location: locationArea,
-            notes: notes ? `${notes} • ${item.category}` : `Item from mixed e-waste photo: ${item.category}`,
-            identificationMethod: item.identificationMethod || 'demo_ai',
-            confidenceScore: item.confidence || 0.85,
-            collectorConfirmed: true,
-            aiSuggestedCategory: item.aiSuggestedCategory || null,
-            aiSuggestedSubcategory: item.aiSuggestedSubcategory || null,
-            aiConfidenceScore: item.aiConfidenceScore || null,
-            estimatedPrice: itemPriceEst?.midPrice || null,
-            estimatedLotValueMin: itemPriceEst?.estimatedLotValueMin || null,
-            estimatedLotValueMax: itemPriceEst?.estimatedLotValueMax || null
-          });
+        const newLot = createScrapLot({
+          collectorId: activeCollectorId,
+          materialType: 'Mixed E-Waste',
+          materialCategory: 'Mixed E-Waste',
+          materialSubcategory: detectedItems.map((d) => d.category).join(', '),
+          items: itemsList,
+          photo,
+          weight: totalNumWeight,
+          weightUnit,
+          condition,
+          location: locationArea,
+          notes: notes ? `${notes}` : `Mixed E-Waste lot with ${detectedItems.length} items: ${detectedItems.map((d) => d.category).join(', ')}`,
+          sourceType: 'platform_user',
+          identificationMethod: 'demo_ai',
+          confidenceScore: 0.92,
+          collectorConfirmed: true,
+          estimatedPrice: priceEstimate?.midPrice || 450,
+          estimatedLotValueMin: priceEstimate?.estimatedLotValueMin || Math.round(totalNumWeight * 350),
+          estimatedLotValueMax: priceEstimate?.estimatedLotValueMax || Math.round(totalNumWeight * 550)
+        });
 
-          lotsCreated.push(newLot);
-        }
-
-        setCreatedLots(lotsCreated);
-        setCreatedLot(lotsCreated[0]);
+        setCreatedLots([newLot]);
+        setCreatedLot(newLot);
         setStep(6);
       } else {
         const selectedMatObj = MATERIAL_OPTIONS.find((m) => m.type === materialType);
         const category = selectedMatObj?.category || 'Electronic Components';
+        const numWeight = parseFloat(weight) || 1;
+
+        const singleItem = [{
+          name: materialType,
+          category,
+          subcategory: materialSubcategory || selectedMatObj?.defaultSubcategory || materialType,
+          condition,
+          weight: numWeight
+        }];
 
         const newLot = createScrapLot({
           collectorId: activeCollectorId,
           materialType,
           materialCategory: category,
           materialSubcategory,
+          items: singleItem,
           photo,
-          weight,
+          weight: numWeight,
           weightUnit,
           condition,
           location: locationArea,
           notes,
+          sourceType: 'platform_user',
           identificationMethod,
           confidenceScore,
           collectorConfirmed: true,
@@ -3186,54 +3190,48 @@ export const CollectorSellPage = () => {
                 )}
               </div>
 
-              {/* Multi-Lot Creation List if multiple lots created */}
-              {createdLots && createdLots.length > 1 && (
+              {/* Whole Lot Items Breakdown */}
+              {createdLot.items && createdLot.items.length > 0 && (
                 <div style={{ marginBottom: '1.25rem', textAlign: 'left' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                     <strong style={{ fontSize: '0.92rem', color: '#166534' }}>
-                      📦 {createdLots.length} Scrap Lots Created from Photo:
+                      📦 Constituent Items in this Lot ({createdLot.items.length}):
                     </strong>
                     <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
-                      All Active
+                      Complete Single Lot
                     </span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {createdLots.map((lot, idx) => {
-                      const mat = MATERIAL_OPTIONS.find((m) => m.type === lot.materialType) || { icon: '📦' };
-                      return (
-                        <div
-                          key={lot.id}
-                          style={{
-                            padding: '0.65rem 0.85rem',
-                            borderRadius: '8px',
-                            border: '1px solid #bbf7d0',
-                            background: '#ffffff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '1.4rem' }}>{mat.icon}</span>
-                            <div>
-                              <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
-                                {lot.id} • {lot.materialType}
-                              </strong>
-                              <span style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>
-                                {lot.weight} {lot.weightUnit} • {lot.condition} • {lot.materialId}
-                              </span>
-                            </div>
-                          </div>
-                          {lot.estimatedPrice && (
-                            <div style={{ textAlign: 'right' }}>
-                              <strong style={{ fontSize: '0.82rem', color: '#15803d' }}>
-                                ₹{lot.estimatedPrice}/kg
-                              </strong>
-                            </div>
-                          )}
+                    {createdLot.items.map((item, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: '8px',
+                          border: '1px solid #bbf7d0',
+                          background: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                      >
+                        <div>
+                          <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
+                            • {item.name || item.category}
+                          </strong>
+                          <span style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>
+                            {item.subcategory ? `${item.subcategory} • ` : ''}Condition: {item.condition}
+                          </span>
                         </div>
-                      );
-                    })}
+                        {item.weight > 0 && (
+                          <div style={{ textAlign: 'right' }}>
+                            <strong style={{ fontSize: '0.82rem', color: '#15803d' }}>
+                              {item.weight} kg
+                            </strong>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

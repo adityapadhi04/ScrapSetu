@@ -25,7 +25,6 @@ import {
   CustomerBookPickupPage,
   CustomerBookingsPage
 } from './pages/customer/CustomerPages';
-import KabadiwalaDashboard from './pages/kabadiwala/KabadiwalaDashboard';
 import RecyclerDashboard from './pages/recycler/RecyclerDashboard';
 import {
   RecyclerLotsPage,
@@ -73,11 +72,9 @@ function AppLayout() {
             <Route path="/customer/bookings" element={<CustomerBookingsPage />} />
           </Route>
 
-          {/* 0.1. Kabadiwala Protected Routes */}
-          <Route element={<ProtectedRoute allowedRoles={['kabadiwala', 'collector']} />}>
-            <Route path="/kabadiwala" element={<KabadiwalaDashboard />} />
-            <Route path="/kabadiwala/pickups" element={<KabadiwalaDashboard />} />
-          </Route>
+          {/* Legacy Kabadiwala Redirect to Collector */}
+          <Route path="/kabadiwala" element={<Navigate to="/collector" replace />} />
+          <Route path="/kabadiwala/*" element={<Navigate to="/collector" replace />} />
 
           {/* 1. Collector Protected Routes */}
           <Route element={<ProtectedRoute allowedRoles={['collector']} />}>
@@ -122,7 +119,7 @@ function AppLayout() {
           </Route>
 
           {/* 5. Shared: Sync Status — accessible to all authenticated roles */}
-          <Route element={<ProtectedRoute allowedRoles={['customer', 'kabadiwala', 'collector', 'recycler', 'repair', 'repair-shop', 'admin']} />}>
+          <Route element={<ProtectedRoute allowedRoles={['customer', 'collector', 'recycler', 'repair', 'repair-shop', 'admin']} />}>
             <Route path="/sync-status" element={<SyncStatusPage />} />
           </Route>
 

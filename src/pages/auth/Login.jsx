@@ -90,15 +90,6 @@ export const Login = () => {
       email: DEMO_USERS.customer.email
     },
     {
-      key: 'kabadiwala',
-      labelKey: 'kabadiwalaName',
-      fallback: 'Local Kabadiwala',
-      Icon: Truck,
-      color: '#d97706',
-      bg: '#fef3c7',
-      email: DEMO_USERS.kabadiwala.email
-    },
-    {
       key: 'collector',
       labelKey: 'collectorName',
       fallback: 'Informal Scrap Collector',

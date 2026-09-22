@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { 
   ArrowLeft, 
@@ -11,7 +11,11 @@ import {
   User, 
   ShieldCheck, 
   MapPin,
-  LogOut
+  LogOut,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Filter
 } from 'lucide-react';
 import PageContainer from '../../components/common/PageContainer';
 import MobileBottomNav from '../../components/common/MobileBottomNav';
@@ -23,6 +27,7 @@ import Input from '../../components/common/Input';
 import AccountSwitcher from '../../components/common/AccountSwitcher';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { EmptyState } from '../../components/common/FeedbackStates';
 import {
   getPickups,
   getPickupsByBuyer,
@@ -37,6 +42,9 @@ import {
 import { getRecyclerById, getActiveRecyclers } from '../../services/recyclerService';
 import { getOffersForBuyer } from '../../services/offerService';
 import { getTransactionsByBuyer } from '../../services/transactionService';
+import { getAllScrapLots, getLotReuseEligibility } from '../../services/scrapLotService';
+import { subscribeToRealtimeSync } from '../../services/realtimeSync';
+import MakeOfferModal from '../../components/marketplace/MakeOfferModal';
 import {
   createHandover,
   confirmBuyerReceipt,
@@ -98,89 +106,376 @@ export const RecyclerNavBar = () => {
 export const RecyclerLotsPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const [selectedLotForOffer, setSelectedLotForOffer] = useState(null);
-  const [offerBid, setOfferBid] = useState('1750');
+  const { user } = useAuth();
+  const activeBuyerId = user?.userId?.startsWith('REC') ? user.userId : (user?.recyclerId || (user?.userId || 'REC-0001'));
+  const buyerName = user?.name || 'EcoGreen E-Waste Recyclers Pvt Ltd';
 
-  const handleOfferSubmit = (e) => {
-    e.preventDefault();
-    alert(`Offer of ₹${offerBid} submitted for ${selectedLotForOffer.material} (Lot ${selectedLotForOffer.id})! [Demo]`);
-    setSelectedLotForOffer(null);
+  const loadLotsData = () => {
+    const rawLots = getAllScrapLots();
+    if (!rawLots || rawLots.length === 0) return [];
+
+    // Filter by recycling eligibility ('recycle' or 'both', and not completed/sold)
+    const eligibleLots = rawLots.filter((lot) => {
+      if (lot.status === 'Sold' || lot.transactionStatus === 'completed') return false;
+      const eligibility = getLotReuseEligibility(lot);
+      return eligibility.isEligibleForRecycler;
+    });
+
+    return eligibleLots.map((lot) => {
+      const displayLocation = typeof lot.location === 'string'
+        ? lot.location
+        : (lot.location?.area ? `${lot.location.area}, ${lot.location.city || ''}` : (lot.location?.city || 'Local Collector'));
+      const eligibility = getLotReuseEligibility(lot);
+      const itemsList = Array.isArray(lot.items) && lot.items.length > 0
+        ? lot.items
+        : [{
+            name: lot.materialType || lot.materialCategory || 'Recyclable Scrap',
+            category: lot.materialCategory || lot.materialType,
+            weight: lot.weight,
+            condition: lot.condition || 'fair'
+          }];
+
+      return {
+        id: lot.id,
+        rawLot: lot,
+        name: lot.materialType || lot.materialCategory,
+        materialCategory: lot.materialCategory || lot.materialType,
+        items: itemsList,
+        collector: lot.collectorId || 'Local Collector',
+        location: displayLocation,
+        condition: lot.condition || 'fair',
+        weight: lot.weight,
+        weightUnit: lot.weightUnit || 'kg',
+        availableQty: `${lot.weight} ${lot.weightUnit || 'kg'}`,
+        estimatedRange: lot.estimatedLotValueMin
+          ? `₹${lot.estimatedLotValueMin} - ₹${lot.estimatedLotValueMax}`
+          : (lot.estimatedPrice ? `₹${Math.round(lot.estimatedPrice * (parseFloat(lot.weight) || 1))}` : (lot.priceEstimate?.priceRangeFormatted || '₹1,500 - ₹2,200')),
+        sourceType: lot.sourceType || 'collector_created',
+        notes: lot.notes || '',
+        createdAt: lot.createdAt,
+        eligibility
+      };
+    });
   };
+
+  const [lots, setLots] = useState(loadLotsData);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLotForOffer, setSelectedLotForOffer] = useState(null);
+  const [viewingLot, setViewingLot] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const refreshLots = () => {
+    setIsSyncing(true);
+    setLots(loadLotsData());
+    setTimeout(() => setIsSyncing(false), 300);
+  };
+
+  // Real-time synchronization subscription
+  useEffect(() => {
+    refreshLots();
+    const unsubscribe = subscribeToRealtimeSync(() => {
+      refreshLots();
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const filtered = lots.filter((l) => {
+    const term = searchTerm.toLowerCase();
+    const matchesItems = l.items.some((it) =>
+      (it.name && it.name.toLowerCase().includes(term)) ||
+      (it.category && it.category.toLowerCase().includes(term))
+    );
+    return (
+      l.id.toLowerCase().includes(term) ||
+      l.name.toLowerCase().includes(term) ||
+      l.condition.toLowerCase().includes(term) ||
+      l.collector.toLowerCase().includes(term) ||
+      l.location.toLowerCase().includes(term) ||
+      matchesItems
+    );
+  });
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', paddingBottom: '2.5rem' }}>
       <PageContainer maxWidth="1100px">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
-          <button onClick={() => navigate('/recycler')} className="btn btn-ghost" style={{ padding: '6px' }}>
-            <ArrowLeft size={20} />
-          </button>
-          <h1 style={{ fontSize: '1.35rem', fontWeight: 800 }}>📦 {t('availableLots')}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button onClick={() => navigate('/recycler')} className="btn btn-ghost" style={{ padding: '6px' }}>
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h1 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0 }}>📦 {t('availableLots')}</h1>
+                <span style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  background: '#ecfdf5', 
+                  border: '1px solid #a7f3d0', 
+                  color: '#065f46', 
+                  fontSize: '0.74rem', 
+                  fontWeight: 700, 
+                  padding: '2px 8px', 
+                  borderRadius: '999px' 
+                }}>
+                  <span style={{ 
+                    width: '7px', 
+                    height: '7px', 
+                    borderRadius: '50%', 
+                    background: isSyncing ? '#f59e0b' : '#10b981',
+                    boxShadow: isSyncing ? '0 0 6px #f59e0b' : '0 0 6px #10b981'
+                  }} />
+                  {isSyncing ? 'Syncing...' : 'Real-Time Sync Active'}
+                </span>
+                <button
+                  onClick={refreshLots}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    color: '#475569'
+                  }}
+                >
+                  <RefreshCw size={12} style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }} />
+                  Refresh
+                </button>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+                Complete scrap lots available for authorized scientific recovery and recycling
+              </p>
+            </div>
+          </div>
+
+          <div style={{ width: '260px' }}>
+            <Input
+              placeholder="Search lots, materials, collector..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
 
         <RecyclerNavBar />
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {MOCK_RECYCLER_LOTS.map((lot) => (
-            <Card key={lot.id} style={{ padding: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-                    <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                      {lot.id}
-                    </span>
-                    <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{lot.material}</h2>
+        {filtered.length === 0 ? (
+          <EmptyState
+            title="No matching scrap lots"
+            description="No collector has registered recycling-eligible scrap lots matching your search filter."
+            actionLabel="Clear Search"
+            onAction={() => setSearchTerm('')}
+          />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {filtered.map((lot) => (
+              <Card key={lot.id} style={{ padding: '1.25rem', border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div style={{ flex: '1 1 320px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.75rem', fontFamily: 'monospace', background: '#0f172a', color: '#f8fafc', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                        {lot.id}
+                      </span>
+                      {lot.sourceType === 'demo_seed' ? (
+                        <span style={{ fontSize: '0.68rem', background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                          Demo Seed
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.68rem', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                          Collector Lot
+                        </span>
+                      )}
+                      <span style={{ fontSize: '0.68rem', background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                        ♻ {lot.eligibility?.label || 'Recycling Eligible'}
+                      </span>
+                      <Badge variant="success">✓ Available</Badge>
+                    </div>
+
+                    <h2 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '6px 0', color: '#0f172a' }}>
+                      {lot.name}
+                    </h2>
+
+                    {/* Complete Constituent Items Breakdown */}
+                    <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', margin: '8px 0', maxWidth: '580px' }}>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
+                        Constituent Items & Materials ({lot.items.length}):
+                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {lot.items.map((it, idx) => (
+                          <div key={idx} style={{ fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between', color: '#334155' }}>
+                            <span>• <strong>{it.name || it.category}</strong> {it.subcategory ? `(${it.subcategory})` : ''}</span>
+                            <span style={{ color: '#64748b' }}>{it.weight || 0} kg • {it.condition || 'fair'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '12px', fontSize: '0.82rem', color: '#475569', flexWrap: 'wrap' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Package size={14} color="#0284c7" />
+                        Total Weight: <strong>{lot.availableQty}</strong>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle2 size={14} color="#15803d" />
+                        Condition: <strong>{lot.condition}</strong>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <MapPin size={14} color="#ea580c" />
+                        Collector: <strong>{lot.collector}</strong> ({lot.location})
+                      </span>
+                    </div>
                   </div>
-                  <p style={{ fontSize: '0.85rem', color: '#475569' }}>
-                    Approx. weight: <strong>{lot.approxWeight}</strong> • Distance: <strong>{lot.distance}</strong>
-                  </p>
-                  <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
-                    Collector location: {lot.collectorLocation}
-                  </p>
+
+                  <div style={{ textAlign: 'right', minWidth: '160px' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'block' }}>Platform Valuation</span>
+                    <strong style={{ fontSize: '1.25rem', color: '#0284c7' }}>{lot.estimatedRange}</strong>
+                  </div>
                 </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b', display: 'block' }}>Estimated Range</span>
-                  <strong style={{ fontSize: '1.25rem', color: '#0284c7' }}>{lot.estimatedRange}</strong>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setViewingLot(lot)}
+                  >
+                    View Lot
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setSelectedLotForOffer(lot.rawLot)}
+                  >
+                    💰 MAKE OFFER
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Modal: View Full Lot Breakdown */}
+        {viewingLot && (
+          <Modal
+            isOpen={!!viewingLot}
+            onClose={() => setViewingLot(null)}
+            title={`Scrap Lot Details: ${viewingLot.id}`}
+            maxWidth="600px"
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>{viewingLot.name}</h3>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                    Registered: {viewingLot.createdAt ? new Date(viewingLot.createdAt).toLocaleString() : 'Recent'}
+                  </span>
+                </div>
+                <Badge variant="success">✓ Available</Badge>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                  Constituent Items & Materials Breakdown
+                </span>
+                <div style={{ background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', fontSize: '0.8rem', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9', textAlign: 'left' }}>
+                        <th style={{ padding: '6px 10px' }}>Item</th>
+                        <th style={{ padding: '6px 10px' }}>Category</th>
+                        <th style={{ padding: '6px 10px' }}>Weight</th>
+                        <th style={{ padding: '6px 10px' }}>Condition</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingLot.items.map((it, idx) => (
+                        <tr key={idx} style={{ borderTop: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '6px 10px', fontWeight: 600 }}>{it.name || it.category}</td>
+                          <td style={{ padding: '6px 10px', color: '#64748b' }}>{it.subcategory || it.category}</td>
+                          <td style={{ padding: '6px 10px' }}>{it.weight} kg</td>
+                          <td style={{ padding: '6px 10px' }}>
+                            <span style={{ textTransform: 'capitalize' }}>{it.condition || 'fair'}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem', fontSize: '0.82rem' }}>
+                <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem' }}>Total Weight</span>
+                  <strong>{viewingLot.availableQty}</strong>
+                </div>
+                <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem' }}>Platform Valuation</span>
+                  <strong style={{ color: '#0284c7' }}>{viewingLot.estimatedRange}</strong>
+                </div>
+                <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem' }}>Collector</span>
+                  <strong>{viewingLot.collector}</strong>
+                </div>
+                <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.72rem' }}>Location</span>
+                  <strong>{viewingLot.location}</strong>
+                </div>
+              </div>
+
+              {viewingLot.notes && (
+                <div style={{ background: '#f0f9ff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bae6fd', marginBottom: '1rem', fontSize: '0.8rem', color: '#0369a1' }}>
+                  <strong>Collector Notes:</strong> {viewingLot.notes}
+                </div>
+              )}
+
+              {viewingLot.eligibility?.reasons && (
+                <div style={{ background: '#f0fdf4', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bbf7d0', marginBottom: '1.25rem', fontSize: '0.78rem', color: '#166534' }}>
+                  <strong>Recycler Authorization & Processing Capability:</strong>
+                  <ul style={{ margin: '4px 0 0 0', paddingLeft: '1.1rem' }}>
+                    {viewingLot.eligibility.reasons.map((r, idx) => (
+                      <li key={idx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <Button variant="outline" onClick={() => setViewingLot(null)}>
+                  Close
+                </Button>
                 <Button
                   variant="secondary"
-                  size="sm"
-                  onClick={() => setSelectedLotForOffer(lot)}
+                  onClick={() => {
+                    const lotToOffer = viewingLot.rawLot;
+                    setViewingLot(null);
+                    setSelectedLotForOffer(lotToOffer);
+                  }}
                 >
-                  MAKE OFFER
+                  💰 Make Offer on {viewingLot.id}
                 </Button>
               </div>
-            </Card>
-          ))}
-        </div>
+            </div>
+          </Modal>
+        )}
 
-        {/* Modal: Make Offer */}
-        <Modal
-          isOpen={!!selectedLotForOffer}
-          onClose={() => setSelectedLotForOffer(null)}
-          title={`Make Offer: ${selectedLotForOffer?.material}`}
-        >
-          {selectedLotForOffer && (
-            <form onSubmit={handleOfferSubmit}>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
-                Submitting competitive offer for Lot {selectedLotForOffer.id} ({selectedLotForOffer.approxWeight}). Estimated range is {selectedLotForOffer.estimatedRange}.
-              </p>
-              <Input
-                label="Offer Amount (₹)"
-                type="number"
-                value={offerBid}
-                onChange={(e) => setOfferBid(e.target.value)}
-                required
-              />
-              <Button type="submit" variant="secondary" fullWidth style={{ marginTop: '1rem' }}>
-                Submit Offer to Collector
-              </Button>
-            </form>
-          )}
-        </Modal>
+        {/* Modal: Make Real Marketplace Offer */}
+        {selectedLotForOffer && (
+          <MakeOfferModal
+            isOpen={!!selectedLotForOffer}
+            onClose={() => setSelectedLotForOffer(null)}
+            lot={selectedLotForOffer}
+            buyerRole="recycler"
+            buyerId={activeBuyerId}
+            buyerName={buyerName}
+            onOfferSubmitted={() => {
+              setSelectedLotForOffer(null);
+              refreshLots();
+            }}
+          />
+        )}
 
         {/* LOWER-LEFT: Account Switcher */}
         <div style={{ maxWidth: '280px', marginTop: '2.5rem', marginBottom: '2rem' }}>

@@ -59,17 +59,6 @@ export const AccountSwitcher = ({ dropup = true, style = {} }) => {
       email: DEMO_USERS.customer.email
     },
     {
-      key: ROLES.KABADIWALA,
-      nameKey: 'kabadiwalaName',
-      defaultName: 'Local Kabadiwala',
-      iconPrefix: '🚛',
-      Icon: Truck,
-      path: '/kabadiwala',
-      color: '#d97706',
-      bg: '#fef3c7',
-      email: DEMO_USERS.kabadiwala.email
-    },
-    {
       key: ROLES.COLLECTOR,
       nameKey: 'collectorName',
       defaultName: 'Informal Scrap Collector',

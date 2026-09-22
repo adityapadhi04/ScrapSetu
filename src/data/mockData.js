@@ -118,7 +118,7 @@ export const MOCK_COLLECTOR_LOTS = [
     fairPriceEstimate: '₹1,550 – ₹1,800',
     status: 'Ready for Handover',
     statusTag: 'COMPLETED ✓',
-    matchedBuyer: 'Om Electronics (Repair Shop • 2.8 km)',
+    matchedBuyer: 'Gunupur Digital Clinic (Repair Shop • 0.8 km)',
     date: '19 Sep 2026',
     buyerOffer: '₹1,800'
   },
@@ -144,7 +144,7 @@ export const MOCK_COLLECTOR_TRANSACTIONS = [
     weight: '2.4 kg',
     amount: '₹1,800',
     buyerType: 'Repair Shop',
-    buyerName: 'Om Electronics & Laptop Care',
+    buyerName: 'Gunupur Digital Clinic',
     date: '19 Sept 2026',
     paymentMode: 'UPI Instant Payout'
   },
@@ -165,13 +165,13 @@ export const MOCK_COLLECTOR_TRANSACTIONS = [
 export const MOCK_NEARBY_BUYERS = [
   {
     id: 'BUY-01',
-    name: 'Om Electronics & Laptop Care',
+    name: 'Gunupur Digital Clinic',
     type: 'Repair Shop',
     typeIcon: '🔧',
-    distance: '2.8 km away',
-    distanceNum: 2.8,
+    distance: '0.8 km away',
+    distanceNum: 0.8,
     specialty: 'Parts Recovery & Reusable PCBs',
-    address: 'Shop 12, Lamington Road, Mumbai',
+    address: 'College Road Market, Gunupur, Odisha 765022',
     rating: 4.8,
     badgeText: 'Parts Buyer'
   },
@@ -255,9 +255,9 @@ export const MOCK_RECYCLER_PICKUPS = [
 ];
 
 export const MOCK_REPAIR_SHOP_DATA = {
-  shopName: 'Om Electronics & Laptop Care',
-  owner: 'Mahesh Sharma',
-  location: 'Lamington Road, Mumbai',
+  shopName: 'Gunupur Digital Clinic',
+  owner: 'Santosh Kumar Nayak',
+  location: 'College Road Market, Gunupur, Odisha',
   matchingItemsCount: 8,
   activeWantedItemsCount: 4,
   pendingOffersCount: 2,

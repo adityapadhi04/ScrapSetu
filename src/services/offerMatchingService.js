@@ -28,6 +28,68 @@ const extractLocationStrings = (loc) => {
 };
 
 /**
+ * Normalizes and checks if a Repair Shop's registered location matches a Lot's location.
+ * Rule: Collector selects LOT location -> only Repair Shops registered in that SAME location can see that lot.
+ *
+ * Example:
+ * Lot: Gunupur Sector 2
+ * -> Repair Shop in Gunupur Sector 2 / Gunupur: Match (true)
+ * -> Other locations: No match (false)
+ */
+export const isLocationMatch = (shopLoc, lotLoc) => {
+  if (!shopLoc || !lotLoc) return false;
+
+  const normalize = (val) => {
+    if (!val) return '';
+    if (typeof val === 'string') return val.toLowerCase().trim();
+    if (typeof val === 'object') {
+      const parts = [val.area, val.city, val.district, val.state, val.landmark].filter(Boolean);
+      return parts.join(' ').toLowerCase().trim();
+    }
+    return String(val).toLowerCase().trim();
+  };
+
+  const sStr = normalize(shopLoc);
+  const lStr = normalize(lotLoc);
+
+  if (!sStr || !lStr) return false;
+
+  // 1. Direct string containment or equality
+  if (sStr === lStr || sStr.includes(lStr) || lStr.includes(sStr)) {
+    // If both specify different sectors (e.g. Sector 1 vs Sector 2), enforce exact sector match
+    const sSector = sStr.match(/sector\s*(\d+)/i);
+    const lSector = lStr.match(/sector\s*(\d+)/i);
+    if (sSector && lSector) {
+      return sSector[1] === lSector[1];
+    }
+    return true;
+  }
+
+  // 2. Significant location tokens match (e.g., 'gunupur', 'dharavi', 'mumbai', 'rayagada')
+  const stopwords = new Set(['sector', 'road', 'street', 'market', 'near', 'flat', 'shop', 'odisha', 'maharashtra', 'india', 'dist', 'district', 'area', 'cluster']);
+  const getTokens = (str) =>
+    str
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopwords.has(w));
+
+  const sTokens = getTokens(sStr);
+  const lTokens = getTokens(lStr);
+
+  const hasCommonToken = sTokens.some((t) => lTokens.includes(t));
+  if (hasCommonToken) {
+    const sSector = sStr.match(/sector\s*(\d+)/i);
+    const lSector = lStr.match(/sector\s*(\d+)/i);
+    if (sSector && lSector) {
+      return sSector[1] === lSector[1];
+    }
+    return true;
+  }
+
+  return false;
+};
+
+/**
  * Check if a Repair Shop is eligible to submit an offer for a given scrap lot
  */
 export const isRepairShopEligible = (shop, lot) => {
@@ -39,9 +101,35 @@ export const isRepairShopEligible = (shop, lot) => {
 
   // 1. Material Compatibility
   const acceptedMaterials = (shop.acceptedMaterials || []).map((m) => m.toLowerCase());
-  const materialMatch = acceptedMaterials.some(
-    (m) => lotMaterial.includes(m) || m.includes(lotMaterial)
-  );
+  const lotCat = (lot.materialCategory || '').toLowerCase();
+  const lotType = (lot.materialType || '').toLowerCase();
+  const lotSub = (lot.materialSubcategory || '').toLowerCase();
+
+  let materialMatch =
+    lotCat.includes('mixed') ||
+    lotType.includes('mixed') ||
+    lotCat.includes('e-waste') ||
+    lotType.includes('e-waste') ||
+    acceptedMaterials.some(
+      (m) =>
+        (lotCat && (lotCat.includes(m) || m.includes(lotCat))) ||
+        (lotType && (lotType.includes(m) || m.includes(lotType))) ||
+        (lotSub && (lotSub.includes(m) || m.includes(lotSub)))
+    );
+
+  if (!materialMatch && Array.isArray(lot.items) && lot.items.length > 0) {
+    materialMatch = lot.items.some((it) => {
+      const itName = (it.name || '').toLowerCase();
+      const itCat = (it.category || '').toLowerCase();
+      const itSub = (it.subcategory || '').toLowerCase();
+      return acceptedMaterials.some(
+        (m) =>
+          (itCat && (itCat.includes(m) || m.includes(itCat))) ||
+          (itName && (itName.includes(m) || m.includes(itName))) ||
+          (itSub && (itSub.includes(m) || m.includes(itSub)))
+      );
+    });
+  }
 
   if (!materialMatch) {
     return { eligible: false, reasons: [] };
@@ -56,24 +144,20 @@ export const isRepairShopEligible = (shop, lot) => {
   }
   reasons.push(`Condition compatible for reuse & parts recovery (${lot.condition || 'Fair'})`);
 
-  // 3. Location Relevance
-  const lotLocParts = extractLocationStrings(lot.location);
-  const shopLocParts = extractLocationStrings(shop.location);
-  const locationMatch =
-    lotLocParts.length === 0 ||
-    shopLocParts.length === 0 ||
-    shopLocParts.some((sPart) => lotLocParts.some((lPart) => lPart.includes(sPart) || sPart.includes(lPart)));
-
-  if (locationMatch) {
-    reasons.push('Located within regional service area');
+  // 3. Location Relevance — STRICT SAME LOCATION MATCHING
+  const locMatch = isLocationMatch(shop.location, lot.location);
+  if (!locMatch) {
+    return { eligible: false, reasons: [] };
   }
+  const shopAreaStr = typeof shop.location === 'object' ? (shop.location.area || 'Same Location') : String(shop.location || 'Same Location');
+  reasons.push(`Location match (${shopAreaStr})`);
 
   // 4. Active Wanted Item Demand Boost
   try {
-    const shopWanted = getWantedItems({ shopId: shop.id });
+    const shopWanted = getWantedItems({ shopId: shop.id || shop.repairShopId });
     const hasWantedDemand = shopWanted.some((w) => {
       const wCat = (w.category || '').toLowerCase();
-      const wItem = (w.itemNeeded || '').toLowerCase();
+      const wItem = (w.itemNeeded || w.name || '').toLowerCase();
       return lotMaterial.includes(wCat) || lotMaterial.includes(wItem);
     });
     if (hasWantedDemand) {
@@ -94,13 +178,22 @@ export const isRepairShopEligible = (shop, lot) => {
  */
 export const getEligibleLotsForRepairShop = (shopId) => {
   const shops = getRepairShops();
-  const shop = shops.find((s) => s.repairShopId === shopId || s.id === shopId || s.name === shopId) || shops[0];
+  let shop = shops.find((s) => s.repairShopId === shopId || s.id === shopId || s.name === shopId);
+  if (!shop) {
+    if (shopId === 'usr-repair-01' || shopId === 'repair') {
+      shop = shops.find((s) => s.repairShopId === 'SHOP-0002') || shops[0];
+    } else {
+      shop = shops[0];
+    }
+  }
   if (!shop) return [];
 
   const lots = getAllScrapLots();
 
   return lots
     .map((lot) => {
+      if (lot.status === 'Sold' || lot.transactionStatus === 'completed') return null;
+
       const evaluation = isRepairShopEligible(shop, lot);
       if (!evaluation.eligible) return null;
 

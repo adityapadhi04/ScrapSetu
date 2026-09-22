@@ -10,7 +10,6 @@
 
 export const ACCOUNT_ROLES = {
   CUSTOMER: 'customer',
-  KABADIWALA: 'kabadiwala',
   COLLECTOR: 'collector',
   REPAIR: 'repair',
   RECYCLER: 'recycler',
@@ -19,7 +18,6 @@ export const ACCOUNT_ROLES = {
 
 export const ROLE_PATHS = {
   customer: '/customer',
-  kabadiwala: '/kabadiwala',
   collector: '/collector',
   repair: '/repair-shop',
   recycler: '/recycler',
@@ -45,26 +43,6 @@ export const DEMO_USERS = {
       address: 'Flat 402, Greenfield Apts, Dharavi'
     }
   },
-  kabadiwala: {
-    id: 'usr-kabadi-01',
-    kabadiId: 'KBD-001',
-    email: 'kabadi@scrapsetu.demo',
-    password: 'kabadi123',
-    name: 'Radhe Shyam',
-    displayName: 'Local Kabadiwala',
-    roleNameKey: 'kabadiwalaName',
-    role: 'kabadiwala',
-    dashboardPath: '/kabadiwala',
-    iconPrefix: '🚛',
-    badgeVariant: 'warning',
-    themeColor: '#d97706',
-    meta: {
-      kabadiId: 'KBD-001',
-      phone: '+91 98201 12345',
-      area: 'Dharavi / Kurla / Sion',
-      rating: 4.8
-    }
-  },
   collector: {
     id: 'usr-collector-01',
     email: 'collector@scrapsetu.demo',
@@ -88,8 +66,8 @@ export const DEMO_USERS = {
     id: 'usr-repair-01',
     email: 'repair@scrapsetu.demo',
     password: 'repair123',
-    name: 'Om Electronics & Laptop Care',
-    owner: 'Mahesh Sharma',
+    name: 'Gunupur Digital Clinic',
+    owner: 'Santosh Kumar Nayak',
     displayName: 'Repair Shop',
     roleNameKey: 'repairName',
     role: 'repair',
@@ -98,9 +76,9 @@ export const DEMO_USERS = {
     badgeVariant: 'warning',
     themeColor: '#d97706',
     meta: {
-      location: 'Lamington Road, Mumbai',
-      regNo: 'SE-84910/MUM',
-      specialty: 'Laptop Motherboards & Displays'
+      location: 'College Road Market, Gunupur, Odisha',
+      regNo: 'SE-765022/GNP',
+      specialty: 'Mobile & Laptop Repair, Circuit Board Salvage'
     }
   },
   recycler: {
@@ -148,7 +126,7 @@ export const normalizeRole = (role) => {
   if (!role) return 'collector';
   const lower = String(role).toLowerCase().replace(/_/g, '-');
   if (lower.includes('customer')) return 'customer';
-  if (lower.includes('kabadi')) return 'kabadiwala';
+  if (lower.includes('kabadi')) return 'collector';
   if (lower.includes('collector')) return 'collector';
   if (lower.includes('repair')) return 'repair';
   if (lower.includes('recycler')) return 'recycler';

@@ -9,6 +9,7 @@ import { createMaterialRecord, resetMaterialDataset } from './materialDatasetSer
 import { createPriceRecord, resetPriceDataset } from './priceDatasetService.js';
 import { enqueue } from './syncQueueService.js';
 import { emitDataChange } from './realtimeSync.js';
+import { evaluateReusePotential } from './reuseIntelligenceService.js';
 
 export const STORAGE_KEY_SCRAP_LOTS = 'scrapsetu_scrap_lots';
 
@@ -63,6 +64,10 @@ const SEED_LOTS = [
     materialType: 'PCB',
     materialCategory: 'Electronic Components',
     materialSubcategory: 'Computer PCB',
+    items: [
+      { name: 'Computer PCB', category: 'PCB', subcategory: 'Computer PCB', weight: 1.4, condition: 'fair' },
+      { name: 'Motherboard Fragments', category: 'PCB', subcategory: 'Motherboard', weight: 1.0, condition: 'fair' }
+    ],
     photo: null,
     weight: 2.4,
     weightUnit: 'kg',
@@ -74,6 +79,7 @@ const SEED_LOTS = [
     },
     notes: 'Laptop motherboards and PCB fragments',
     status: 'Created',
+    sourceType: 'demo_seed',
     createdAt: '2026-09-18T10:00:00.000Z',
     identificationMethod: 'manual',
     confidenceScore: 1.0,
@@ -92,6 +98,9 @@ const SEED_LOTS = [
     materialType: 'Cable',
     materialCategory: 'Cables & Wires',
     materialSubcategory: 'Copper Cable',
+    items: [
+      { name: 'Copper Cable', category: 'Cable', subcategory: 'Copper Cable', weight: 5.0, condition: 'good' }
+    ],
     photo: null,
     weight: 5.0,
     weightUnit: 'kg',
@@ -103,6 +112,7 @@ const SEED_LOTS = [
     },
     notes: 'Stripped copper power wiring',
     status: 'Created',
+    sourceType: 'demo_seed',
     createdAt: '2026-09-19T08:30:00.000Z',
     identificationMethod: 'manual',
     confidenceScore: 1.0,
@@ -112,6 +122,42 @@ const SEED_LOTS = [
     estimatedLotValueMax: 3400,
     offerStatus: 'offers_available',
     transactionStatus: 'created'
+  },
+  {
+    id: 'LOT-0003',
+    materialId: 'MAT-0003',
+    priceId: 'PRICE-0006',
+    collectorId: 'usr-collector-01',
+    materialType: 'Mixed E-Waste',
+    materialCategory: 'Mixed E-Waste',
+    materialSubcategory: 'Assorted Salvage & Scrap',
+    items: [
+      { name: 'Mobile Phone', category: 'Mobile Phone', subcategory: 'Smartphone Assembly', weight: 0.4, condition: 'fair' },
+      { name: 'PCB', category: 'PCB', subcategory: 'Computer PCB', weight: 0.8, condition: 'fair' },
+      { name: 'Cable', category: 'Cable', subcategory: 'Copper Cable', weight: 0.7, condition: 'good' },
+      { name: 'Battery', category: 'Battery', subcategory: 'Li-ion Battery', weight: 0.5, condition: 'fair' }
+    ],
+    photo: null,
+    weight: 2.4,
+    weightUnit: 'kg',
+    condition: 'fair',
+    location: {
+      area: 'Gunupur',
+      city: 'Rayagada',
+      state: 'Odisha'
+    },
+    notes: 'Mixed household electronics collection with salvageable parts and recyclable cables/batteries',
+    status: 'Created',
+    sourceType: 'demo_seed',
+    createdAt: '2026-09-21T09:00:00.000Z',
+    identificationMethod: 'demo_ai',
+    confidenceScore: 0.94,
+    collectorConfirmed: true,
+    estimatedPrice: 420,
+    estimatedLotValueMin: 950,
+    estimatedLotValueMax: 1150,
+    offerStatus: 'none',
+    transactionStatus: 'none'
   }
 ];
 
@@ -174,6 +220,83 @@ export const getScrapLotById = (lotId) => {
 };
 
 /**
+ * Evaluates a complete scrap lot's reuse/recycle classification based on all its constituent items.
+ * Implements ScrapSetu's Reuse Before Recycle intelligence without splitting the lot.
+ *
+ * @param {Object} lot
+ * @returns {{ pathway: 'reuse'|'recycle'|'both', isEligibleForRepair: boolean, isEligibleForRecycler: boolean, label: string, reasons: string[] }}
+ */
+export const getLotReuseEligibility = (lot) => {
+  if (!lot) {
+    return {
+      pathway: 'both',
+      isEligibleForRepair: true,
+      isEligibleForRecycler: true,
+      label: 'Both (Reuse & Recycle)',
+      reasons: ['Eligible for marketplace evaluation']
+    };
+  }
+
+  // Extract items list if available; fallback to primary material category
+  const items = Array.isArray(lot.items) && lot.items.length > 0
+    ? lot.items
+    : [{
+        name: lot.materialType || lot.materialCategory || 'E-waste',
+        category: lot.materialCategory || lot.materialType || 'E-waste',
+        subcategory: lot.materialSubcategory || '',
+        condition: lot.condition || 'fair',
+        weight: lot.weight || 0
+      }];
+
+  let hasReuse = false;
+  let hasRecycle = false;
+  const reasons = [];
+
+  for (const it of items) {
+    const itCat = it.category || it.name || lot.materialType;
+    const itCond = it.condition || lot.condition || 'fair';
+    const itWeight = typeof it.weight === 'number' ? it.weight : (parseFloat(it.weight) || 0);
+
+    const evalRes = evaluateReusePotential({
+      materialCategory: itCat,
+      materialSubcategory: it.subcategory || '',
+      condition: itCond,
+      weight: itWeight
+    });
+
+    if (evalRes.pathway === 'reuse' || evalRes.pathway === 'both') {
+      hasReuse = true;
+      if (evalRes.reason && !reasons.includes(evalRes.reason)) {
+        reasons.push(evalRes.reason);
+      }
+    }
+    if (evalRes.pathway === 'recycle' || evalRes.pathway === 'both') {
+      hasRecycle = true;
+      if (evalRes.reason && !reasons.includes(evalRes.reason)) {
+        reasons.push(evalRes.reason);
+      }
+    }
+  }
+
+  let pathway = 'both';
+  if (hasReuse && !hasRecycle) {
+    pathway = 'reuse';
+  } else if (!hasReuse && hasRecycle) {
+    pathway = 'recycle';
+  } else {
+    pathway = 'both';
+  }
+
+  return {
+    pathway,
+    isEligibleForRepair: pathway === 'reuse' || pathway === 'both',
+    isEligibleForRecycler: pathway === 'recycle' || pathway === 'both',
+    label: pathway === 'reuse' ? 'Reuse / Salvage' : pathway === 'recycle' ? 'Recycling' : 'Both (Reuse & Recycle)',
+    reasons: reasons.length > 0 ? reasons : ['Classified by ScrapSetu circular reuse engine']
+  };
+};
+
+/**
  * Create a new scrap lot, atomically create linked Material Dataset record, and persist in localStorage
  */
 export const createScrapLot = ({
@@ -181,12 +304,14 @@ export const createScrapLot = ({
   materialType,
   materialCategory,
   materialSubcategory = '',
+  items = null,
   photo = null,
   weight,
   weightUnit = 'kg',
   condition,
   location,
   notes = '',
+  sourceType = 'platform_user',
   identificationMethod = 'manual',
   confidenceScore = 1.0,
   collectorConfirmed = true,
@@ -230,6 +355,24 @@ export const createScrapLot = ({
   const categoryMatch = MATERIAL_OPTIONS.find((m) => m.type === materialType);
   const derivedCategory = materialCategory || categoryMatch?.category || 'Electronic Components';
   const derivedSubcategory = materialSubcategory || categoryMatch?.defaultSubcategory || materialType;
+
+  // Format constituent items for whole-lot representation
+  const formattedItems = Array.isArray(items) && items.length > 0
+    ? items.map((it) => ({
+        id: it.id || it.itemId || undefined,
+        name: it.name || it.category || materialType,
+        category: it.category || materialType,
+        subcategory: it.subcategory || derivedSubcategory,
+        weight: typeof it.weight === 'number' ? it.weight : (parseFloat(it.weight) || 0),
+        condition: (it.condition || condition).toLowerCase()
+      }))
+    : [{
+        name: materialType,
+        category: derivedCategory,
+        subcategory: derivedSubcategory,
+        weight: numWeight,
+        condition: condition.toLowerCase()
+      }];
 
   // Resolve numeric estimated price if passed as number or estimate object
   let numericEstimatedPrice = null;
@@ -295,6 +438,16 @@ export const createScrapLot = ({
     }
   }
 
+  // Determine reuse/recycling eligibility for the complete lot
+  const reuseClassification = getLotReuseEligibility({
+    items: formattedItems,
+    materialType,
+    materialCategory: derivedCategory,
+    materialSubcategory: derivedSubcategory,
+    condition,
+    weight: numWeight
+  });
+
   const newLot = {
     id: newLotId,
     materialId: materialRecord.materialId,
@@ -303,6 +456,7 @@ export const createScrapLot = ({
     materialType,
     materialCategory: derivedCategory,
     materialSubcategory: derivedSubcategory,
+    items: formattedItems,
     photo,
     weight: numWeight,
     weightUnit: weightUnit === 'g' ? 'g' : 'kg',
@@ -312,6 +466,7 @@ export const createScrapLot = ({
     status: 'Created',
     offerStatus: 'none',
     transactionStatus: 'none',
+    sourceType: sourceType || 'platform_user',
     createdAt: materialRecord.createdAt,
     identificationMethod,
     confidenceScore: materialRecord.confidenceScore,
@@ -321,7 +476,8 @@ export const createScrapLot = ({
     aiConfidenceScore: materialRecord.aiConfidenceScore,
     estimatedPrice: numericEstimatedPrice,
     estimatedLotValueMin: lotValueMin,
-    estimatedLotValueMax: lotValueMax
+    estimatedLotValueMax: lotValueMax,
+    reuseClassification
   };
 
   const updatedLots = [newLot, ...allLots];

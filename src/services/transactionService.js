@@ -258,14 +258,7 @@ export const getTransactionsByCollector = (collectorId) => {
 export const getTransactionsByBuyer = (buyerId) => {
   if (!buyerId) return [];
   const transactions = getTransactions();
-  const isRepairShop = buyerId === 'usr-repair-01' || buyerId === 'SHOP-0001' || buyerId === 'SHOP-0002';
-  return transactions.filter((tx) => {
-    if (tx.buyerId === buyerId) return true;
-    if (isRepairShop && (tx.buyerId === 'usr-repair-01' || tx.buyerId === 'SHOP-0001' || tx.buyerId === 'SHOP-0002' || tx.buyerRole === 'repair')) {
-      return true;
-    }
-    return false;
-  });
+  return transactions.filter((tx) => tx.buyerId === buyerId);
 };
 
 export const getTransactionsByLot = (lotId) => {

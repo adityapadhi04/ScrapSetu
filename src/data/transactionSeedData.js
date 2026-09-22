@@ -99,8 +99,8 @@ export const SEED_TRANSACTIONS = [
     offerId: 'OFR-0001',
     lotId: 'LOT-0001',
 
-    collectorId: 'usr-collector-01',
-    collectorName: 'Demo Collector (Informal)',
+    collectorId: 'usr-collector-02',
+    collectorName: 'Demo Collector 2 (Informal)',
 
     buyerId: 'usr-repair-01',
     buyerRole: 'repair',

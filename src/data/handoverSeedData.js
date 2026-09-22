@@ -97,7 +97,7 @@ export const SEED_HANDOVERS = [
     transactionId: 'TXN-0003',
     lotId: 'LOT-0001',
 
-    collectorId: 'usr-collector-01',
+    collectorId: 'usr-collector-02',
     buyerId: 'usr-repair-01',
     buyerRole: 'repair',
 

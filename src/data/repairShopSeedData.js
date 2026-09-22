@@ -52,13 +52,13 @@ export const DEMO_REPAIR_SHOPS = [
   },
   {
     repairShopId: 'SHOP-0002',
-    name: 'Om Electronics & Laptop Care',
-    ownerName: 'Mahesh Sharma',
+    name: 'Gunupur Digital Clinic',
+    ownerName: 'Santosh Kumar Nayak',
     location: {
-      area: 'Lamington Road, Mumbai',
-      state: 'Maharashtra',
-      pincode: '400007',
-      landmark: 'Near Grant Road Station'
+      area: 'College Road Market, Gunupur',
+      state: 'Odisha',
+      pincode: '765022',
+      landmark: 'Near Bus Stand'
     },
     acceptedMaterials: [
       'Laptop / Computer',
